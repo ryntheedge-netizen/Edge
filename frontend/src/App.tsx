@@ -1,0 +1,158 @@
+import React, { useState, useEffect } from 'react';
+import { SocketProvider } from './context/SocketContext';
+import { ToastProvider } from './context/ToastContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { PublicScreen } from './pages/PublicScreen';
+import { AdminDashboardPage } from './pages/AdminDashboard';
+import { SuperadminDashboardPage } from './pages/SuperadminDashboard';
+import { LoginPage } from './pages/LoginPage';
+import { EdgeDashboardPage } from './pages/EdgeDashboard';
+import { EdgeLayout } from './components/EdgeLayout';
+import { TraderPortfolioPage } from './pages/TraderPortfolioPage';
+import { AttendanceDashboardPage } from './pages/AttendanceDashboard';
+import { AttendanceScannerPage } from './pages/AttendanceScanner';
+import { QRBookPage } from './pages/QRBook';
+import { SuperadminMarketPage } from './pages/SuperadminMarketPage';
+import { SuperadminAuditLogsPage } from './pages/SuperadminAuditLogsPage';
+
+const MainApp: React.FC = () => {
+  const { isAuthenticated, hasPermission } = useAuth();
+  const [currentPath, setCurrentPath] = useState<string>(window.location.pathname);
+
+  useEffect(() => {
+    const onPopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  if (currentPath === '/') {
+    window.history.replaceState(null, '', '/dashboard');
+    setCurrentPath('/dashboard');
+    return null;
+  }
+
+  if (currentPath === '/login') {
+    return isAuthenticated ? <EdgeDashboardPage /> : <LoginPage title="EDGE PLATFORM LOGIN" />;
+  }
+
+  if (currentPath === '/dashboard') {
+    return <EdgeDashboardPage />;
+  }
+
+  // Attendance Module Routes
+  if (currentPath === '/attendance') {
+    if (hasPermission('ATTENDANCE_ADMIN')) {
+      return <AttendanceDashboardPage />;
+    }
+    return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
+  }
+
+  if (currentPath === '/attendance/scanner') {
+    if (hasPermission('ATTENDANCE_VERIFIER')) {
+      return <AttendanceScannerPage />;
+    }
+    return <LoginPage title="SCANNER LOGIN" expectedRole="att_scanner" />;
+  }
+
+  if (currentPath === '/attendance/qr-book') {
+    if (hasPermission('ATTENDANCE_ADMIN')) {
+      return <QRBookPage />;
+    }
+    return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
+  }
+
+  // Bull Ring Admin Routes
+  if (currentPath === '/admin' || currentPath === '/bull-ring/admin') {
+    if (hasPermission('BULL_RING_ADMIN')) {
+      return (
+        <EdgeLayout title="Bull Ring Organizer">
+          <AdminDashboardPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="ORGANIZER LOGIN" expectedRole="admin" />;
+  }
+
+  if (currentPath === '/superadmin' || currentPath === '/bull-ring/superadmin') {
+    if (hasPermission('BULL_RING_SUPERADMIN')) {
+      return (
+        <EdgeLayout title="Bull Ring Market">
+          <SuperadminMarketPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="SUPERADMIN LOGIN" expectedRole="superadmin" />;
+  }
+
+  if (currentPath === '/bull-ring/superadmin-controls') {
+    if (hasPermission('BULL_RING_SUPERADMIN')) {
+      return (
+        <EdgeLayout title="Bull Ring Controls">
+          <SuperadminDashboardPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="SUPERADMIN LOGIN" expectedRole="superadmin" />;
+  }
+
+  if (currentPath === '/bull-ring/superadmin-audit') {
+    if (hasPermission('BULL_RING_SUPERADMIN')) {
+      return (
+        <EdgeLayout title="Trade Audit Log">
+          <SuperadminAuditLogsPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="SUPERADMIN LOGIN" expectedRole="superadmin" />;
+  }
+
+  if (currentPath === '/bull-ring/portfolio') {
+    if (hasPermission('BULL_RING_ADMIN') || hasPermission('BULL_RING_SUPERADMIN')) {
+      return (
+        <EdgeLayout title="Trader Portfolio">
+          <TraderPortfolioPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="PORTFOLIO LOGIN" expectedRole="admin" />;
+  }
+
+
+
+  // Other specific modules placeholders
+  if (currentPath === '/betting' || currentPath === '/betting/admin') {
+    if (hasPermission('BETTING_ADMIN')) {
+      return <EdgeLayout title="Betting Admin"><div style={{padding: '2rem'}}>Betting Module (Coming Soon)</div></EdgeLayout>;
+    }
+    return <LoginPage title="BETTING ADMIN LOGIN" expectedRole="betting_admin" />;
+  }
+
+  if (currentPath === '/auction' || currentPath === '/auction/admin') {
+    if (hasPermission('AUCTION_ADMIN')) {
+      return <EdgeLayout title="Auction Admin"><div style={{padding: '2rem'}}>Auction Module (Coming Soon)</div></EdgeLayout>;
+    }
+    return <LoginPage title="AUCTION ADMIN LOGIN" expectedRole="auction_admin" />;
+  }
+
+  // Public Screener - Accessible to public without login, but can be viewed by anyone who visits /bull-ring/screener
+  if (currentPath === '/bull-ring' || currentPath === '/bull-ring/screener') {
+    return <PublicScreen />;
+  }
+
+  // Fallback to Public Screener for unknown paths
+  return <PublicScreen />;
+};
+
+export function App() {
+  return (
+    <SocketProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <MainApp />
+        </AuthProvider>
+      </ToastProvider>
+    </SocketProvider>
+  );
+}
+
+export default App;
