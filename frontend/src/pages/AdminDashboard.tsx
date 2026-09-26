@@ -22,37 +22,50 @@ export const AdminDashboardPage: React.FC = () => {
         if (eventRes.event) setEventState(eventRes.event);
         if (eventRes.stats) setStats(eventRes.stats);
         if (Array.isArray(secRes)) setSecurities(secRes);
+        setInitialLoading(false);
       })
-      .catch((err) => console.error('Failed to load admin dashboard data:', err));
+      .catch((err) => {
+        console.error('Failed to load admin dashboard data:', err);
+        setInitialLoading(false);
+      });
   };
 
   useEffect(() => {
     fetchDashboardData();
   }, [refreshCount]);
 
-  const { socket } = useSocket();
+  const { channel, isConnected } = useSocket();
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  // State Recovery on Reconnect
+  useEffect(() => {
+    if (isConnected && !initialLoading) {
+      console.log('[AdminDashboard] Recovering authoritative state after reconnect...');
+      fetchDashboardData();
+    }
+  }, [isConnected]);
 
   // Auto-refresh the admin dashboard when any relevant socket event occurs
   useEffect(() => {
-    if (!socket) return;
+    if (!channel) return;
 
     const triggerRefresh = () => {
       setRefreshCount((prev) => prev + 1);
     };
 
-    socket.on('TRADE_EXECUTED', triggerRefresh);
-    socket.on('MARKET_STATUS_CHANGED', triggerRefresh);
-    socket.on('EVENT_RESET', triggerRefresh);
+    channel.bind('TRADE_EXECUTED', triggerRefresh);
+    channel.bind('MARKET_STATUS_CHANGED', triggerRefresh);
+    channel.bind('EVENT_RESET', triggerRefresh);
     // Note: LTP_UPDATE is usually accompanied by TRADE_EXECUTED, but we can listen just in case
-    socket.on('LTP_UPDATE', triggerRefresh);
+    channel.bind('LTP_UPDATE', triggerRefresh);
 
     return () => {
-      socket.off('TRADE_EXECUTED', triggerRefresh);
-      socket.off('MARKET_STATUS_CHANGED', triggerRefresh);
-      socket.off('EVENT_RESET', triggerRefresh);
-      socket.off('LTP_UPDATE', triggerRefresh);
+      channel.unbind('TRADE_EXECUTED', triggerRefresh);
+      channel.unbind('MARKET_STATUS_CHANGED', triggerRefresh);
+      channel.unbind('EVENT_RESET', triggerRefresh);
+      channel.unbind('LTP_UPDATE', triggerRefresh);
     };
-  }, [socket]);
+  }, [channel]);
 
   const handleTradeSubmitted = () => {
     // Also trigger local refresh immediately for responsiveness, though socket will catch it too

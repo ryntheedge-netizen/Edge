@@ -21,28 +21,41 @@ export const SuperadminDashboardPage: React.FC = () => {
       .then(([eventRes, secRes]) => {
         if (eventRes.event) setEventState(eventRes.event);
         if (Array.isArray(secRes)) setSecurities(secRes);
+        setInitialLoading(false);
       })
-      .catch((err) => console.error('Failed to load admin dashboard data:', err));
+      .catch((err) => {
+        console.error('Failed to load admin dashboard data:', err);
+        setInitialLoading(false);
+      });
   };
 
   useEffect(() => {
     fetchDashboardData();
   }, [refreshCount]);
 
-  const { socket } = useSocket();
+  const { channel, isConnected } = useSocket();
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  // State Recovery on Reconnect
+  useEffect(() => {
+    if (isConnected && !initialLoading) {
+      console.log('[SuperadminDashboard] Recovering authoritative state after reconnect...');
+      fetchDashboardData();
+    }
+  }, [isConnected]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!channel) return;
     const triggerRefresh = () => setRefreshCount((prev) => prev + 1);
 
-    socket.on('EVENT_RESET', triggerRefresh);
-    socket.on('MARKET_STATUS_CHANGED', triggerRefresh);
+    channel.bind('EVENT_RESET', triggerRefresh);
+    channel.bind('MARKET_STATUS_CHANGED', triggerRefresh);
 
     return () => {
-      socket.off('EVENT_RESET', triggerRefresh);
-      socket.off('MARKET_STATUS_CHANGED', triggerRefresh);
+      channel.unbind('EVENT_RESET', triggerRefresh);
+      channel.unbind('MARKET_STATUS_CHANGED', triggerRefresh);
     };
-  }, [socket]);
+  }, [channel]);
 
   return (
     <div className="admin-container">

@@ -3,13 +3,13 @@ import { MarketEvent } from '../../types';
 import { useSocket } from '../../context/SocketContext';
 
 export const Ticker: React.FC = () => {
-  const { socket } = useSocket();
+  const { channel, isConnected } = useSocket();
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Map keyed by security_id → only the LATEST LTP event per security is kept.
   const [movementsMap, setMovementsMap] = useState<Map<number, MarketEvent>>(new Map());
 
-  // Fetch initial movements — keep only the latest event per security.
-  useEffect(() => {
+  const fetchMovements = () => {
     fetch('/api/trades/movements?limit=100')
       .then((res) => res.json())
       .then((data: MarketEvent[]) => {
@@ -19,13 +19,30 @@ export const Ticker: React.FC = () => {
         const map = new Map<number, MarketEvent>();
         data.forEach((ev) => map.set(ev.security_id, ev));
         setMovementsMap(map);
+        setInitialLoading(false);
       })
-      .catch((err) => console.error('Failed to load ticker movements:', err));
+      .catch((err) => {
+        console.error('Failed to load ticker movements:', err);
+        setInitialLoading(false);
+      });
+  };
+
+  // Fetch initial movements — keep only the latest event per security.
+  useEffect(() => {
+    fetchMovements();
   }, []);
+
+  // State Recovery on Reconnect
+  useEffect(() => {
+    if (isConnected && !initialLoading) {
+      console.log('[Ticker] Recovering authoritative state after reconnect...');
+      fetchMovements();
+    }
+  }, [isConnected]);
 
   // Live LTP_UPDATE: replace (or insert) the entry for this security.
   useEffect(() => {
-    if (!socket) return;
+    if (!channel) return;
 
     const handleLtpUpdate = (payload: { marketEvent: MarketEvent }) => {
       if (payload?.marketEvent) {
@@ -39,14 +56,14 @@ export const Ticker: React.FC = () => {
 
     const handleReset = () => setMovementsMap(new Map());
 
-    socket.on('LTP_UPDATE', handleLtpUpdate);
-    socket.on('EVENT_RESET', handleReset);
+    channel.bind('LTP_UPDATE', handleLtpUpdate);
+    channel.bind('EVENT_RESET', handleReset);
 
     return () => {
-      socket.off('LTP_UPDATE', handleLtpUpdate);
-      socket.off('EVENT_RESET', handleReset);
+      channel.unbind('LTP_UPDATE', handleLtpUpdate);
+      channel.unbind('EVENT_RESET', handleReset);
     };
-  }, [socket]);
+  }, [channel]);
 
   const movements = Array.from(movementsMap.values());
 

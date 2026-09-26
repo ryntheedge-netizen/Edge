@@ -64,7 +64,7 @@ initDatabase().then(() => {
     console.log(`=======================================================`);
     console.log(`  BULL RING SIMULATION BACKEND ENGINE READY`);
     console.log(`  Server running at: http://localhost:${PORT}`);
-    console.log(`  WebSocket endpoint: ws://localhost:${PORT}`);
+    console.log(`  Realtime mechanism: Pusher Channels`);
     console.log(`=======================================================`);
   });
 }).catch(err => {

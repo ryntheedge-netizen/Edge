@@ -35,7 +35,7 @@ function enrichSecurity(raw: Security, existing?: Security): Security {
 }
 
 export const PublicScreen: React.FC = () => {
-  const { socket } = useSocket();
+  const { channel, isConnected } = useSocket();
   const [eventState, setEventState] = useState<EventState | null>(null);
   const [securities, setSecurities] = useState<Security[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -60,9 +60,17 @@ export const PublicScreen: React.FC = () => {
     fetchMarketData();
   }, []);
 
-  // Listen to Socket events for real-time updates
+  // State Recovery on Reconnect
   useEffect(() => {
-    if (!socket) return;
+    if (isConnected && !loading) {
+      console.log('[PublicScreen] Recovering authoritative state after reconnect...');
+      fetchMarketData();
+    }
+  }, [isConnected]);
+
+  // Listen to Pusher events for real-time updates
+  useEffect(() => {
+    if (!channel) return;
 
     // LTP_UPDATE: a threshold was crossed — use the marketEvent's authoritative
     // absolute_change / percentage_change (prev_ltp → new_ltp), NOT initial_ltp.
@@ -111,18 +119,18 @@ export const PublicScreen: React.FC = () => {
       if (payload?.securities) setSecurities(payload.securities);
     };
 
-    socket.on('LTP_UPDATE', handleLtpUpdate);
-    socket.on('TRADE_EXECUTED', handleTradeExecuted);
-    socket.on('MARKET_STATUS_CHANGED', handleStatusChanged);
-    socket.on('EVENT_RESET', handleEventReset);
+    channel.bind('LTP_UPDATE', handleLtpUpdate);
+    channel.bind('TRADE_EXECUTED', handleTradeExecuted);
+    channel.bind('MARKET_STATUS_CHANGED', handleStatusChanged);
+    channel.bind('EVENT_RESET', handleEventReset);
 
     return () => {
-      socket.off('LTP_UPDATE', handleLtpUpdate);
-      socket.off('TRADE_EXECUTED', handleTradeExecuted);
-      socket.off('MARKET_STATUS_CHANGED', handleStatusChanged);
-      socket.off('EVENT_RESET', handleEventReset);
+      channel.unbind('LTP_UPDATE', handleLtpUpdate);
+      channel.unbind('TRADE_EXECUTED', handleTradeExecuted);
+      channel.unbind('MARKET_STATUS_CHANGED', handleStatusChanged);
+      channel.unbind('EVENT_RESET', handleEventReset);
     };
-  }, [socket]);
+  }, [channel]);
 
   return (
     <div className="market-board-container">

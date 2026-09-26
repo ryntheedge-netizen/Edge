@@ -10,10 +10,11 @@ interface TradeHistoryTableProps {
 }
 
 export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ securities, refreshTrigger }) => {
-  const { socket } = useSocket();
+  const { channel, isConnected } = useSocket();
   const { apiFetch } = useApi();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Filters
   const [filterSecurity, setFilterSecurity] = useState<string>('');
@@ -35,10 +36,12 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ securities
           setTrades(data.trades);
         }
         setLoading(false);
+        setInitialLoading(false);
       })
       .catch((err) => {
         console.error('Failed to load trade history:', err);
         setLoading(false);
+        setInitialLoading(false);
       });
   };
 
@@ -46,8 +49,16 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ securities
     fetchTrades();
   }, [filterSecurity, filterTrader, filterAuditId, filterOs, refreshTrigger]);
 
+  // State Recovery on Reconnect
   useEffect(() => {
-    if (!socket) return;
+    if (isConnected && !initialLoading) {
+      console.log('[TradeHistoryTable] Recovering authoritative state after reconnect...');
+      fetchTrades();
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (!channel) return;
 
     const handleTradeExecuted = () => {
       fetchTrades();
@@ -57,14 +68,14 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ securities
       setTrades([]);
     };
 
-    socket.on('TRADE_EXECUTED', handleTradeExecuted);
-    socket.on('EVENT_RESET', handleReset);
+    channel.bind('TRADE_EXECUTED', handleTradeExecuted);
+    channel.bind('EVENT_RESET', handleReset);
 
     return () => {
-      socket.off('TRADE_EXECUTED', handleTradeExecuted);
-      socket.off('EVENT_RESET', handleReset);
+      channel.unbind('TRADE_EXECUTED', handleTradeExecuted);
+      channel.unbind('EVENT_RESET', handleReset);
     };
-  }, [socket, filterSecurity, filterTrader, filterAuditId, filterOs]);
+  }, [channel, filterSecurity, filterTrader, filterAuditId, filterOs]);
 
   return (
     <div className="panel-card">
