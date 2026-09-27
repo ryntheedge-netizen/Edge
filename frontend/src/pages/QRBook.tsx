@@ -79,7 +79,7 @@ export const QRBookPage: React.FC = () => {
         filename:     'EDGE_QR_Book.pdf',
         image:        { type: 'jpeg', quality: 1 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'px', format: [element.offsetWidth, element.offsetHeight], orientation: 'portrait' }
+        jsPDF:        { unit: 'px', format: [800, 1131], orientation: 'portrait' }
       };
 
       html2pdf().set(opt).from(element).save().then(() => {
@@ -555,7 +555,15 @@ export const QRBookPage: React.FC = () => {
 
       {/* Hidden PDF Generator Container */}
       {template && (
-        <div style={{ display: isGeneratingPdf ? 'block' : 'none', position: 'absolute', top: '-9999px', left: '-9999px' }}>
+        <div style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          zIndex: -9999, 
+          opacity: isGeneratingPdf ? 1 : 0, 
+          pointerEvents: 'none',
+          visibility: isGeneratingPdf ? 'visible' : 'hidden'
+        }}>
           <div id="pdf-print-container" style={{ width: '800px', backgroundColor: '#fff' }}>
             {Object.keys(groupedData).map(teamName => 
               groupedData[teamName].participants.map((p: any) => (
@@ -588,8 +596,10 @@ export const QRBookPage: React.FC = () => {
                       <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#000', lineHeight: 1.2 }}>{p.name}</div>
                       <div style={{ fontSize: '16px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
                       {p.events && p.events.length > 0 && (
-                        <div style={{ fontSize: '14px', color: '#555', marginTop: '8px', fontWeight: 500 }}>
-                          {p.events.join(', ')}
+                        <div style={{ fontSize: '14px', color: '#555', marginTop: '8px', fontWeight: 500, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          {p.events.map((ev: string, idx: number) => (
+                            <div key={idx}>{ev}</div>
+                          ))}
                         </div>
                       )}
                     </div>
