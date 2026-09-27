@@ -79,7 +79,7 @@ export const QRBookPage: React.FC = () => {
         filename:     'EDGE_QR_Book.pdf',
         image:        { type: 'jpeg', quality: 1 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'px', format: [800, 1131], orientation: 'portrait' }
+        jsPDF:        { unit: 'mm', format: [63, 100], orientation: 'portrait' }
       };
 
       html2pdf().set(opt).from(element).save().then(() => {
@@ -564,16 +564,16 @@ export const QRBookPage: React.FC = () => {
           pointerEvents: 'none',
           visibility: isGeneratingPdf ? 'visible' : 'hidden'
         }}>
-          <div id="pdf-print-container" style={{ width: '800px', backgroundColor: '#fff' }}>
+          <div id="pdf-print-container" style={{ width: '630px', backgroundColor: 'transparent' }}>
             {Object.keys(groupedData).map(teamName => 
               groupedData[teamName].participants.map((p: any) => (
                 <div key={p.participant_id} style={{
                   position: 'relative',
-                  width: '800px',
-                  height: '1131px', // A4 aspect ratio 1:1.414 at 800px width
+                  width: '630px',
+                  height: '1000px', // Exactly 6.3cm x 10cm ratio
                   backgroundImage: `url(${template.image_data})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
+                  backgroundSize: '100% 100%',
+                  backgroundRepeat: 'no-repeat',
                   pageBreakAfter: 'always',
                   overflow: 'hidden'
                 }}>
@@ -588,20 +588,13 @@ export const QRBookPage: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: 'transparent',
                     padding: '2%'
                   }}>
                     <QRCode value={p.participant_id} style={{ maxWidth: '60%', maxHeight: '60%', height: 'auto', width: 'auto' }} level="H" />
                     <div style={{ marginTop: '10px', textAlign: 'center', width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                       <div style={{ fontSize: p.name.length > 20 ? '18px' : '24px', fontWeight: 'bold', color: '#000', lineHeight: 1.2, wordBreak: 'break-word', maxWidth: '95%' }}>{p.name}</div>
                       <div style={{ fontSize: '16px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
-                      {p.events && p.events.length > 0 && (
-                        <div style={{ fontSize: '14px', color: '#555', marginTop: '8px', fontWeight: 500, display: 'flex', flexDirection: 'column', gap: '2px', wordBreak: 'break-word', maxWidth: '95%' }}>
-                          {p.events.map((ev: string, idx: number) => (
-                            <div key={idx}>{ev}</div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                   
@@ -615,7 +608,7 @@ export const QRBookPage: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: 'transparent',
                     padding: '2%',
                     overflow: 'hidden'
                   }}>
@@ -649,11 +642,106 @@ export const QRBookPage: React.FC = () => {
                   </div>
                 )}
                 {(uploadedImage || template) && (
-                  <div style={{ position: 'relative', width: '100%', paddingBottom: '141.4%', backgroundImage: `url(${uploadedImage || template.image_data})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'top center' }}>
+                  <div 
+                    id="template-editor-container"
+                    style={{ position: 'relative', width: '100%', paddingBottom: '158.73%', backgroundImage: `url(${uploadedImage || template.image_data})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' }}
+                  >
                     {/* Box 1 Overlay */}
-                    <div style={{ position: 'absolute', border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', left: `${box1.x}%`, top: `${box1.y}%`, width: `${box1.w}%`, height: `${box1.h}%`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold' }}>Box 1 (Main)</div>
+                    <div 
+                      onPointerDown={(e) => {
+                         e.preventDefault();
+                         e.currentTarget.setPointerCapture(e.pointerId);
+                         const moveHandler = (ev: PointerEvent) => {
+                            const rect = document.getElementById('template-editor-container')?.getBoundingClientRect();
+                            if (!rect) return;
+                            const dx = (ev.movementX / rect.width) * 100;
+                            const dy = (ev.movementY / rect.height) * 100;
+                            setBox1(prev => ({...prev, x: Math.max(0, Math.min(100 - prev.w, prev.x + dx)), y: Math.max(0, Math.min(100 - prev.h, prev.y + dy))}));
+                         };
+                         const upHandler = (ev: PointerEvent) => {
+                            const target = ev.target as HTMLElement;
+                            target.releasePointerCapture(ev.pointerId);
+                            target.removeEventListener('pointermove', moveHandler);
+                            target.removeEventListener('pointerup', upHandler);
+                         };
+                         e.currentTarget.addEventListener('pointermove', moveHandler);
+                         e.currentTarget.addEventListener('pointerup', upHandler);
+                      }}
+                      style={{ position: 'absolute', border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', left: `${box1.x}%`, top: `${box1.y}%`, width: `${box1.w}%`, height: `${box1.h}%`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold', cursor: 'move', userSelect: 'none', touchAction: 'none' }}
+                    >
+                      BOX 1 - QR / NAME / ID
+                      <div 
+                        onPointerDown={(e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           e.currentTarget.setPointerCapture(e.pointerId);
+                           const moveHandler = (ev: PointerEvent) => {
+                              const rect = document.getElementById('template-editor-container')?.getBoundingClientRect();
+                              if (!rect) return;
+                              const dx = (ev.movementX / rect.width) * 100;
+                              const dy = (ev.movementY / rect.height) * 100;
+                              setBox1(prev => ({...prev, w: Math.max(5, Math.min(100 - prev.x, prev.w + dx)), h: Math.max(5, Math.min(100 - prev.y, prev.h + dy))}));
+                           };
+                           const upHandler = (ev: PointerEvent) => {
+                              const target = ev.target as HTMLElement;
+                              target.releasePointerCapture(ev.pointerId);
+                              target.removeEventListener('pointermove', moveHandler);
+                              target.removeEventListener('pointerup', upHandler);
+                           };
+                           e.currentTarget.addEventListener('pointermove', moveHandler);
+                           e.currentTarget.addEventListener('pointerup', upHandler);
+                        }}
+                        style={{ position: 'absolute', bottom: 0, right: 0, width: '16px', height: '16px', backgroundColor: '#3b82f6', cursor: 'se-resize' }} 
+                      />
+                    </div>
                     {/* Box 2 Overlay */}
-                    <div style={{ position: 'absolute', border: '2px solid #10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)', left: `${box2.x}%`, top: `${box2.y}%`, width: `${box2.w}%`, height: `${box2.h}%`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#10b981', fontWeight: 'bold' }}>Box 2 (Team)</div>
+                    <div 
+                      onPointerDown={(e) => {
+                         e.preventDefault();
+                         e.currentTarget.setPointerCapture(e.pointerId);
+                         const moveHandler = (ev: PointerEvent) => {
+                            const rect = document.getElementById('template-editor-container')?.getBoundingClientRect();
+                            if (!rect) return;
+                            const dx = (ev.movementX / rect.width) * 100;
+                            const dy = (ev.movementY / rect.height) * 100;
+                            setBox2(prev => ({...prev, x: Math.max(0, Math.min(100 - prev.w, prev.x + dx)), y: Math.max(0, Math.min(100 - prev.h, prev.y + dy))}));
+                         };
+                         const upHandler = (ev: PointerEvent) => {
+                            const target = ev.target as HTMLElement;
+                            target.releasePointerCapture(ev.pointerId);
+                            target.removeEventListener('pointermove', moveHandler);
+                            target.removeEventListener('pointerup', upHandler);
+                         };
+                         e.currentTarget.addEventListener('pointermove', moveHandler);
+                         e.currentTarget.addEventListener('pointerup', upHandler);
+                      }}
+                      style={{ position: 'absolute', border: '2px solid #10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)', left: `${box2.x}%`, top: `${box2.y}%`, width: `${box2.w}%`, height: `${box2.h}%`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#10b981', fontWeight: 'bold', cursor: 'move', userSelect: 'none', touchAction: 'none' }}
+                    >
+                      BOX 2 - TEAM NAME
+                      <div 
+                        onPointerDown={(e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           e.currentTarget.setPointerCapture(e.pointerId);
+                           const moveHandler = (ev: PointerEvent) => {
+                              const rect = document.getElementById('template-editor-container')?.getBoundingClientRect();
+                              if (!rect) return;
+                              const dx = (ev.movementX / rect.width) * 100;
+                              const dy = (ev.movementY / rect.height) * 100;
+                              setBox2(prev => ({...prev, w: Math.max(5, Math.min(100 - prev.x, prev.w + dx)), h: Math.max(5, Math.min(100 - prev.y, prev.h + dy))}));
+                           };
+                           const upHandler = (ev: PointerEvent) => {
+                              const target = ev.target as HTMLElement;
+                              target.releasePointerCapture(ev.pointerId);
+                              target.removeEventListener('pointermove', moveHandler);
+                              target.removeEventListener('pointerup', upHandler);
+                           };
+                           e.currentTarget.addEventListener('pointermove', moveHandler);
+                           e.currentTarget.addEventListener('pointerup', upHandler);
+                        }}
+                        style={{ position: 'absolute', bottom: 0, right: 0, width: '16px', height: '16px', backgroundColor: '#10b981', cursor: 'se-resize' }} 
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -668,7 +756,7 @@ export const QRBookPage: React.FC = () => {
                     </div>
                     
                     <div className="panel-card" style={{ padding: '1rem' }}>
-                      <h4 style={{ color: '#3b82f6', margin: '0 0 1rem 0' }}>Box 1 (QR, Name, Events)</h4>
+                      <h4 style={{ color: '#3b82f6', margin: '0 0 1rem 0' }}>Box 1 (QR, Name, ID)</h4>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                         <div><label style={{ fontSize: '0.8rem', color: '#fff' }}>Left (%)</label><input type="number" className="input-field" value={box1.x} onChange={e=>setBox1({...box1, x: Number(e.target.value)})} /></div>
                         <div><label style={{ fontSize: '0.8rem', color: '#fff' }}>Top (%)</label><input type="number" className="input-field" value={box1.y} onChange={e=>setBox1({...box1, y: Number(e.target.value)})} /></div>
