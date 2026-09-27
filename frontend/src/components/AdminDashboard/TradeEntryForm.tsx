@@ -197,7 +197,10 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
                 color: #fbbf24;
               }
             }
-            .security-dropdown, .security-dropdown option {
+            .security-dropdown {
+              color: #ffffff !important;
+            }
+            .security-dropdown option {
               color: #000000 !important;
             }
           `}
