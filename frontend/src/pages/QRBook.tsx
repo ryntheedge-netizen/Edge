@@ -563,7 +563,7 @@ export const QRBookPage: React.FC = () => {
                   position: 'relative',
                   width: '800px',
                   height: '1131px', // A4 aspect ratio 1:1.414 at 800px width
-                  backgroundImage: \`url(\${template.image_data})\`,
+                  backgroundImage: `url(${template.image_data})`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                   pageBreakAfter: 'always',
@@ -572,10 +572,10 @@ export const QRBookPage: React.FC = () => {
                   {/* White Box 1 (Main Info) */}
                   <div style={{
                     position: 'absolute',
-                    left: \`\${template.config_data.box1.x}%\`,
-                    top: \`\${template.config_data.box1.y}%\`,
-                    width: \`\${template.config_data.box1.w}%\`,
-                    height: \`\${template.config_data.box1.h}%\`,
+                    left: `${template.config_data.box1.x}%`,
+                    top: `${template.config_data.box1.y}%`,
+                    width: `${template.config_data.box1.w}%`,
+                    height: `${template.config_data.box1.h}%`,
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -598,10 +598,10 @@ export const QRBookPage: React.FC = () => {
                   {/* White Box 2 (Team Name) */}
                   <div style={{
                     position: 'absolute',
-                    left: \`\${template.config_data.box2.x}%\`,
-                    top: \`\${template.config_data.box2.y}%\`,
-                    width: \`\${template.config_data.box2.w}%\`,
-                    height: \`\${template.config_data.box2.h}%\`,
+                    left: `${template.config_data.box2.x}%`,
+                    top: `${template.config_data.box2.y}%`,
+                    width: `${template.config_data.box2.w}%`,
+                    height: `${template.config_data.box2.h}%`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -637,11 +637,11 @@ export const QRBookPage: React.FC = () => {
                   </div>
                 )}
                 {(uploadedImage || template) && (
-                  <div style={{ position: 'relative', width: '100%', paddingBottom: '141.4%', backgroundImage: \`url(\${uploadedImage || template.image_data})\`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'top center' }}>
+                  <div style={{ position: 'relative', width: '100%', paddingBottom: '141.4%', backgroundImage: `url(${uploadedImage || template.image_data})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'top center' }}>
                     {/* Box 1 Overlay */}
-                    <div style={{ position: 'absolute', border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', left: \`\${box1.x}%\`, top: \`\${box1.y}%\`, width: \`\${box1.w}%\`, height: \`\${box1.h}%\`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold' }}>Box 1 (Main)</div>
+                    <div style={{ position: 'absolute', border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)', left: `${box1.x}%`, top: `${box1.y}%`, width: `${box1.w}%`, height: `${box1.h}%`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold' }}>Box 1 (Main)</div>
                     {/* Box 2 Overlay */}
-                    <div style={{ position: 'absolute', border: '2px solid #10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)', left: \`\${box2.x}%\`, top: \`\${box2.y}%\`, width: \`\${box2.w}%\`, height: \`\${box2.h}%\`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#10b981', fontWeight: 'bold' }}>Box 2 (Team)</div>
+                    <div style={{ position: 'absolute', border: '2px solid #10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)', left: `${box2.x}%`, top: `${box2.y}%`, width: `${box2.w}%`, height: `${box2.h}%`, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#10b981', fontWeight: 'bold' }}>Box 2 (Team)</div>
                   </div>
                 )}
               </div>
