@@ -255,6 +255,8 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     UNIQUE(participant_id, stage_id, activity_id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS unique_attendance_general ON attendance_records (participant_id, stage_id) WHERE activity_id IS NULL;
+
 CREATE TABLE IF NOT EXISTS attendance_snapshots (
     id SERIAL PRIMARY KEY,
     stage_id INTEGER NOT NULL REFERENCES attendance_stages(id) ON DELETE CASCADE,

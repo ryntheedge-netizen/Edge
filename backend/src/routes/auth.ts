@@ -105,7 +105,8 @@ router.post('/login', (req: Request, res: Response) => {
   let matchedUser = null;
 
   if (username) {
-    matchedUser = USERS.find(u => u.username === username && u.password === password);
+    const cleanUsername = username.trim().toLowerCase();
+    matchedUser = USERS.find(u => u.username.toLowerCase() === cleanUsername && u.password === password);
   } else {
     // Backward compatibility: Find by password only
     matchedUser = USERS.find(u => u.password === password);

@@ -54,20 +54,34 @@ app.get('*', (req, res, next) => {
   });
 });
 
+// Export the Express app for Vercel Serverless Functions
+export default app;
+
 // Initialize Database & Seed default event/securities
 initDatabase().then(() => {
-  // Create HTTP server & Socket.io server
-  const server = http.createServer(app);
-  initSocketServer(server);
+  // Only start the local HTTP server if we are not running on Vercel
+  if (!process.env.VERCEL) {
+    // Create HTTP server & Socket.io server
+    const server = http.createServer(app);
+    initSocketServer(server);
 
-  server.listen(PORT, () => {
-    console.log(`=======================================================`);
-    console.log(`  BULL RING SIMULATION BACKEND ENGINE READY`);
-    console.log(`  Server running at: http://localhost:${PORT}`);
-    console.log(`  Realtime mechanism: Pusher Channels`);
-    console.log(`=======================================================`);
-  });
+    server.listen(PORT, () => {
+      console.log(`=======================================================`);
+      console.log(`  BULL RING SIMULATION BACKEND ENGINE READY`);
+      console.log(`  Server running at: http://localhost:${PORT}`);
+      console.log(`  Realtime mechanism: Pusher Channels`);
+      console.log(`=======================================================`);
+    });
+  } else {
+    // On Vercel, we still need to initialize Pusher (initSocketServer initializes Pusher)
+    // We pass null or a dummy server since Pusher doesn't actually need the HTTP server
+    // Wait, let's just initialize Pusher directly if initSocketServer requires an http.Server.
+    // Actually, initSocketServer just reads env vars and creates a Pusher instance. It ignores the server argument now!
+    initSocketServer(null as any);
+  }
 }).catch(err => {
   console.error("Failed to initialize database", err);
-  process.exit(1);
+  if (!process.env.VERCEL) {
+    process.exit(1);
+  }
 });

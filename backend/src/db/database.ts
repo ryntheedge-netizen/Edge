@@ -199,6 +199,11 @@ export async function seedDefaultData(client?: PoolClient) {
 }
 
 export async function initDatabase() {
+  if (process.env.VERCEL) {
+    console.log('[DB] Skipping database initialization script on Vercel cold start.');
+    return;
+  }
+
   const client = await pool.connect();
   try {
     let schemaPath = path.resolve(__dirname, 'schema.sql');

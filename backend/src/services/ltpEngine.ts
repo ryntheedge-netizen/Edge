@@ -106,10 +106,10 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     let eventRow: any;
 
     if (eventId) {
-      const res = await client.query(`SELECT * FROM events WHERE id = $1 FOR UPDATE`, [eventId]);
+      const res = await client.query(`SELECT * FROM events WHERE id = $1`, [eventId]);
       eventRow = res.rows[0];
     } else {
-      const res = await client.query(`SELECT * FROM events ORDER BY id ASC LIMIT 1 FOR UPDATE`);
+      const res = await client.query(`SELECT * FROM events ORDER BY id ASC LIMIT 1`);
       eventRow = res.rows[0];
     }
 
@@ -149,30 +149,31 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     buyerId = buyerId.toUpperCase();
     sellerId = sellerId.toUpperCase();
 
-    const insertScrap = async (reason: string) => {
-      await client.query(`
+    const insertScrap = (reason: string) => {
+      pool.query(`
         INSERT INTO scrap_trades (event_id, buyer_id, seller_id, security_id, price, quantity, total_value, os_status, entered_by, desk_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `, [eventId, buyerId, sellerId, security.id, input.price, input.quantity, totalValue, reqOsStatus, input.enteredBy || 'ADMIN', input.deskId || null]);
+      `, [eventId, buyerId, sellerId, security.id, input.price, input.quantity, totalValue, reqOsStatus, input.enteredBy || 'ADMIN', input.deskId || null])
+      .catch(() => {}); // Fire and forget to avoid pool deadlock
       throw new Error(reason);
     };
 
     if (!idRegex.test(buyerId)) {
-      await insertScrap(`Trade rejected: Invalid Buyer ID format (${buyerId}). Must be 4 characters like TR01.`);
+      insertScrap(`Trade rejected: Invalid Buyer ID format (${buyerId}). Must be 4 characters like TR01.`);
     }
     if (!idRegex.test(sellerId)) {
-      await insertScrap(`Trade rejected: Invalid Seller ID format (${sellerId}). Must be 4 characters like TR01.`);
+      insertScrap(`Trade rejected: Invalid Seller ID format (${sellerId}). Must be 4 characters like TR01.`);
     }
     if (buyerId === sellerId) {
-      await insertScrap(`Trade rejected: Buyer and Seller cannot be the same participant.`);
+      insertScrap(`Trade rejected: Buyer and Seller cannot be the same participant.`);
     }
     if (input.quantity <= 0 || input.quantity % 5 !== 0 || input.quantity > 100000000) {
-      await insertScrap(`Trade rejected: Quantity must be a positive multiple of 5.`);
+      insertScrap(`Trade rejected: Quantity must be a positive multiple of 5.`);
     }
 
     // 3. Helper to distinguish Jobber vs Trader
-    const buyerJobberRes = await client.query(`SELECT * FROM jobbers WHERE jobber_identifier = $1 AND event_id = $2 FOR UPDATE`, [buyerId, eventId]);
-    const sellerJobberRes = await client.query(`SELECT * FROM jobbers WHERE jobber_identifier = $1 AND event_id = $2 FOR UPDATE`, [sellerId, eventId]);
+    const buyerJobberRes = await client.query(`SELECT * FROM jobbers WHERE jobber_identifier = $1 AND event_id = $2`, [buyerId, eventId]);
+    const sellerJobberRes = await client.query(`SELECT * FROM jobbers WHERE jobber_identifier = $1 AND event_id = $2`, [sellerId, eventId]);
     const buyerJobber = buyerJobberRes.rows[0];
     const sellerJobber = sellerJobberRes.rows[0];
 
@@ -198,7 +199,7 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
 
     // 4. Wallet & Inventory Validations
     if (!isBuyerJobber && buyerTrader.current_cash_balance < totalValue) {
-      await insertScrap(`Trade rejected: Buyer ${buyerId} has insufficient cash.`);
+      insertScrap(`Trade rejected: Buyer ${buyerId} has insufficient cash.`);
     }
 
     let sellerQty = 0;
@@ -206,13 +207,13 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
       const invRes = await client.query(`SELECT remaining_quantity FROM jobber_inventory WHERE jobber_id = $1 AND security_id = $2 FOR UPDATE`, [sellerJobber.id, security.id]);
       sellerQty = invRes.rows.length > 0 ? Number(invRes.rows[0].remaining_quantity) : 0;
       if (sellerQty < input.quantity) {
-        await insertScrap(`Trade rejected: Jobber ${sellerId} has insufficient inventory for ${security.symbol}.`);
+        insertScrap(`Trade rejected: Jobber ${sellerId} has insufficient inventory for ${security.symbol}.`);
       }
     } else {
       const sellerHoldingRes = await client.query(`SELECT quantity FROM trader_holdings WHERE trader_id = $1 AND security_id = $2 FOR UPDATE`, [sellerTrader.id, security.id]);
       sellerQty = sellerHoldingRes.rows.length > 0 ? Number(sellerHoldingRes.rows[0].quantity) : 0;
       if (sellerQty < input.quantity) {
-        await insertScrap(`Trade rejected: Seller ${sellerId} has insufficient shares.`);
+        insertScrap(`Trade rejected: Seller ${sellerId} has insufficient shares.`);
       }
     }
 
