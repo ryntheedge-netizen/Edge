@@ -68,21 +68,25 @@ export const QRBookPage: React.FC = () => {
     
     // Give react time to render the hidden print container
     setTimeout(() => {
-      const element = document.getElementById('pdf-print-container');
-      if (!element) {
+      const container = document.getElementById('pdf-print-container');
+      if (!container) {
         setIsGeneratingPdf(false);
         return;
       }
+      
+      // Calculate exact aspect ratio dynamically based on the first rendered card
+      const firstCard = container.firstElementChild as HTMLElement;
+      const cardHeight = firstCard ? firstCard.offsetHeight : 1131;
       
       const opt = {
         margin:       0,
         filename:     'EDGE_QR_Book.pdf',
         image:        { type: 'jpeg', quality: 1 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'mm', format: [63, 100], orientation: 'portrait' }
+        jsPDF:        { unit: 'px', format: [800, cardHeight], orientation: 'portrait' }
       };
 
-      html2pdf().set(opt).from(element).save().then(() => {
+      html2pdf().set(opt).from(container).save().then(() => {
         setIsGeneratingPdf(false);
       });
     }, 500);
@@ -564,19 +568,17 @@ export const QRBookPage: React.FC = () => {
           pointerEvents: 'none',
           visibility: isGeneratingPdf ? 'visible' : 'hidden'
         }}>
-          <div id="pdf-print-container" style={{ width: '630px', backgroundColor: 'transparent' }}>
+          <div id="pdf-print-container" style={{ width: '800px', backgroundColor: 'transparent' }}>
             {Object.keys(groupedData).map(teamName => 
               groupedData[teamName].participants.map((p: any) => (
                 <div key={p.participant_id} style={{
                   position: 'relative',
-                  width: '630px',
-                  height: '1000px', // Exactly 6.3cm x 10cm ratio
-                  backgroundImage: `url(${template.image_data})`,
-                  backgroundSize: '100% 100%',
-                  backgroundRepeat: 'no-repeat',
+                  width: '800px',
                   pageBreakAfter: 'always',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  lineHeight: 0
                 }}>
+                  <img src={template.image_data} alt="" style={{ width: '800px', height: 'auto', display: 'block' }} />
                   {/* White Box 1 (Main Info) */}
                   <div style={{
                     position: 'absolute',
