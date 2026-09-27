@@ -278,3 +278,9 @@ CREATE TABLE IF NOT EXISTS attendance_audit_logs (
 CREATE INDEX IF NOT EXISTS idx_attendance_records_participant ON attendance_records(participant_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_records_stage ON attendance_records(stage_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_records_activity ON attendance_records(activity_id);
+CREATE TABLE IF NOT EXISTS edge_id_templates (
+    id SERIAL PRIMARY KEY,
+    image_data TEXT NOT NULL,
+    config_data TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

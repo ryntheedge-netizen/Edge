@@ -507,6 +507,16 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
     let inheritedTeamName = '';
     let inheritedTeamCode = '';
     let processedRows: any[] = [];
+    const seenIds = new Set();
+    const seenCombos = new Set();
+
+    const normalizeYesNo = (val: any) => {
+      if (!val) return 'No';
+      const s = String(val).trim().toLowerCase();
+      if (['yes', 'y', 'true', '1'].includes(s)) return 'Yes';
+      if (['no', 'n', 'false', '0', ''].includes(s)) return 'No';
+      return 'Invalid';
+    };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -535,7 +545,27 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
       let existingParticipant = null;
 
       if (row.participant_id) {
+        if (seenIds.has(row.participant_id)) {
+          hasConflict = true;
+          conflictReason.push(`Duplicate Participant ID within Excel file: ${row.participant_id}`);
+        }
+        seenIds.add(row.participant_id);
         existingParticipant = existingParticipants.find(p => p.participant_id === row.participant_id);
+      } else {
+        const combo = `${row.name}-${row.contact}`;
+        if (seenCombos.has(combo)) {
+          hasConflict = true;
+          conflictReason.push(`Duplicate Name/Contact combination within Excel file: ${row.name}`);
+        }
+        seenCombos.add(combo);
+        const matches = existingParticipants.filter(p => p.name.toLowerCase() === row.name.toLowerCase() && p.contact === row.contact);
+        if (matches.length === 1) {
+          existingParticipant = matches[0];
+          row.participant_id = existingParticipant.participant_id; // Set it so it gets reused
+        } else if (matches.length > 1) {
+          hasConflict = true;
+          conflictReason.push("Ambiguous identity: multiple matching records found.");
+        }
       }
 
       if (existingParticipant) {
@@ -549,26 +579,43 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
             conflictReason.push(`Team change from ${extTeam.name} to ${resolvedTeamName}`);
           }
         }
+        if (row.contact && existingParticipant.contact && row.contact !== existingParticipant.contact) {
+            hasConflict = true;
+            conflictReason.push(`Contact mismatch: Existing (${existingParticipant.contact}) vs Excel (${row.contact})`);
+        }
       } else {
         preview.summary.qrGenerated++;
       }
 
-      const unknownEvents: string[] = [];
-      if (row.events && Array.isArray(row.events)) {
-        for (const ev of row.events) {
-          preview.summary.events.add(ev);
-          if (!activities.find(a => a.name.toLowerCase() === ev.toLowerCase())) {
-            unknownEvents.push(ev);
-            hasWarning = true;
-          }
-        }
-      }
+      const eArth = normalizeYesNo(row.event_arthneeti);
+      const eFin = normalizeYesNo(row.event_finance);
+      const eBrand = normalizeYesNo(row.event_brand);
+      const eBull = normalizeYesNo(row.event_bull);
+      const eAi = normalizeYesNo(row.event_ai);
 
+      const resolvedEvents: string[] = [];
+
+      const checkEvent = (val: string, name: string) => {
+        if (val === 'Yes') resolvedEvents.push(name);
+        else if (val === 'Invalid') {
+           hasWarning = true; 
+           conflictReason.push(`Invalid value for ${name}`);
+        }
+      };
+
+      checkEvent(eArth, 'Arthneeti');
+      checkEvent(eFin, 'Finance Ka Funda');
+      checkEvent(eBrand, 'Brand Bazigaar');
+      checkEvent(eBull, 'Bull Ring');
+      checkEvent(eAi, 'AI Ki Baat Cheet');
+
+      for (const ev of resolvedEvents) preview.summary.events.add(ev);
       if (resolvedTeamName) preview.summary.teams.add(resolvedTeamName);
 
       processedRows.push({
         row_index: i + 2,
         ...row,
+        events: resolvedEvents,
         raw_team: rawTeamName || rawTeamCode || 'Blank',
         resolved_team_name: resolvedTeamName,
         resolved_team_code: resolvedTeamCode,
@@ -576,7 +623,7 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
         qr_action,
         hasConflict,
         hasWarning,
-        reasons: [...conflictReason, ...unknownEvents.map(e => `Unknown event: ${e}`)]
+        reasons: conflictReason
       });
     }
 
@@ -813,6 +860,28 @@ router.delete('/team/:id', authenticateAttendanceAdmin, async (req: Request, res
     res.json({ success: true, message: "Team and all its participants deleted successfully" });
   } catch (err: any) {
     res.status(500).json({ success: false, message: "Failed to delete team", error: err.message });
+  }
+});
+
+router.post('/id-template', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const { image_data, config_data } = req.body;
+    await query(`INSERT INTO edge_id_templates (image_data, config_data) VALUES ($1, $2)`, [image_data, JSON.stringify(config_data)]);
+    res.json({ success: true, message: "Template saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to save template" });
+  }
+});
+
+router.get('/id-template', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const tRes = await query(`SELECT * FROM edge_id_templates ORDER BY created_at DESC LIMIT 1`);
+    if (tRes.rows.length === 0) return res.json({ success: false, message: "No template found" });
+    const t = tRes.rows[0];
+    t.config_data = JSON.parse(t.config_data);
+    res.json({ success: true, template: t });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to fetch template" });
   }
 });
 
