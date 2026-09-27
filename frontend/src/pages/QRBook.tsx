@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { EdgeLayout } from '../components/EdgeLayout';
 import { useAuth } from '../context/AuthContext';
 import QRCode from 'react-qr-code';
@@ -81,9 +81,9 @@ export const QRBookPage: React.FC = () => {
       const opt = {
         margin:       0,
         filename:     'EDGE_QR_Book.pdf',
-        image:        { type: 'jpeg', quality: 1 },
+        image:        { type: 'jpeg' as const, quality: 1 },
         html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'px', format: [800, cardHeight], orientation: 'portrait' }
+        jsPDF:        { unit: 'px' as const, format: [800, cardHeight] as [number, number], orientation: 'portrait' as const }
       };
 
       html2pdf().set(opt).from(container).save().then(() => {
@@ -598,13 +598,6 @@ export const QRBookPage: React.FC = () => {
                     <div style={{ marginTop: '10px', textAlign: 'center', width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#ffffff', padding: '4px' }}>
                       <div style={{ fontSize: p.name.length > 20 ? '24px' : '32px', fontWeight: 'bold', color: '#000', lineHeight: 1.2, wordBreak: 'break-word', maxWidth: '95%' }}>{p.name}</div>
                       <div style={{ fontSize: '20px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
-                      {p.events && p.events.length > 0 && (
-                        <div style={{ fontSize: '18px', color: '#555', marginTop: '8px', fontWeight: 500, display: 'flex', flexDirection: 'column', gap: '2px', wordBreak: 'break-word', maxWidth: '95%' }}>
-                          {p.events.map((ev: string, idx: number) => (
-                            <div key={idx}>{ev}</div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                   
