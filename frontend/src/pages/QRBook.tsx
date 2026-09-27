@@ -239,7 +239,45 @@ export const QRBookPage: React.FC = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
-      setUploadedImage(evt.target?.result as string);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Cap max width to 1600px (2x the 800px rendering width) to preserve high print quality
+        // while heavily reducing the base64 payload size to fit Vercel's 4.5MB limit.
+        const MAX_WIDTH = 1600;
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const isTransparent = file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/gif';
+          
+          if (!isTransparent) {
+            // Fill white background for opaque formats like JPEG
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Use WebP for compression while preserving transparency if needed.
+          // Fall back to JPEG for non-transparent images to save space.
+          // This guarantees the payload stays well under the 4.5MB limit while preserving visuals.
+          const mimeType = isTransparent ? 'image/webp' : 'image/jpeg';
+          const compressedBase64 = canvas.toDataURL(mimeType, 0.85);
+          setUploadedImage(compressedBase64);
+        } else {
+          setUploadedImage(evt.target?.result as string);
+        }
+      };
+      img.src = evt.target?.result as string;
     };
     reader.readAsDataURL(file);
   };

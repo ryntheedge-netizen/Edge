@@ -12,6 +12,16 @@ async function migrate() {
   try {
     await client.query('BEGIN');
     
+    console.log('Ensuring schema exists for edge_id_templates...');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS edge_id_templates (
+          id SERIAL PRIMARY KEY,
+          image_data TEXT NOT NULL,
+          config_data TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    
     console.log('Migrating edge_activities...');
     // Safely update activities to match strict nomenclature
     await client.query(`UPDATE edge_activities SET name = 'Brand Bazigaar' WHERE name = 'Brand'`);

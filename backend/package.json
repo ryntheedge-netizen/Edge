@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate:attendance": "tsx src/scripts/migrate_attendance.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.1.2",
