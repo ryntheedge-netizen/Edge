@@ -740,14 +740,14 @@ router.post('/import-commit', authenticateAttendanceAdmin, async (req: Request, 
         }
 
         if (row.events && Array.isArray(row.events)) {
+          // Clear existing participations to ensure we reflect exactly the latest Excel mapping
+          await client.query(`DELETE FROM edge_event_participations WHERE participant_id = $1`, [dbParticipantId]);
+          
           for (const ev of row.events) {
             const act = activities.find(a => a.name.toLowerCase() === ev.toLowerCase());
             if (act) {
-              const eepRes = await client.query(`SELECT 1 FROM edge_event_participations WHERE participant_id = $1 AND activity_id = $2`, [dbParticipantId, act.id]);
-              if (eepRes.rows.length === 0) {
-                await client.query(`INSERT INTO edge_event_participations (participant_id, activity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [dbParticipantId, act.id]);
-                rollbackData.insertedParticipations.push({ p_id: Number(dbParticipantId), a_id: act.id });
-              }
+              await client.query(`INSERT INTO edge_event_participations (participant_id, activity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [dbParticipantId, act.id]);
+              rollbackData.insertedParticipations.push({ p_id: Number(dbParticipantId), a_id: act.id });
             }
           }
         }

@@ -588,15 +588,15 @@ export const QRBookPage: React.FC = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: 'transparent',
+                    backgroundColor: '#ffffff',
                     padding: '2%'
                   }}>
                     <QRCode value={p.participant_id} style={{ maxWidth: '60%', maxHeight: '60%', height: 'auto', width: 'auto' }} level="H" />
-                    <div style={{ marginTop: '10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#000', lineHeight: 1.2 }}>{p.name}</div>
+                    <div style={{ marginTop: '10px', textAlign: 'center', width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ fontSize: p.name.length > 20 ? '18px' : '24px', fontWeight: 'bold', color: '#000', lineHeight: 1.2, wordBreak: 'break-word', maxWidth: '95%' }}>{p.name}</div>
                       <div style={{ fontSize: '16px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
                       {p.events && p.events.length > 0 && (
-                        <div style={{ fontSize: '14px', color: '#555', marginTop: '8px', fontWeight: 500, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div style={{ fontSize: '14px', color: '#555', marginTop: '8px', fontWeight: 500, display: 'flex', flexDirection: 'column', gap: '2px', wordBreak: 'break-word', maxWidth: '95%' }}>
                           {p.events.map((ev: string, idx: number) => (
                             <div key={idx}>{ev}</div>
                           ))}
@@ -615,9 +615,11 @@ export const QRBookPage: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: 'transparent'
+                    backgroundColor: '#ffffff',
+                    padding: '2%',
+                    overflow: 'hidden'
                   }}>
-                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#000', textAlign: 'center' }}>
+                    <div style={{ fontSize: teamName.length > 25 ? '16px' : '20px', fontWeight: 'bold', color: '#000', textAlign: 'center', wordBreak: 'break-word', width: '100%' }}>
                       {teamName}
                     </div>
                   </div>
