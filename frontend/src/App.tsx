@@ -3,17 +3,19 @@ import { SocketProvider } from './context/SocketContext';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PublicScreen } from './pages/PublicScreen';
-import { AdminDashboardPage } from './pages/AdminDashboard';
-import { SuperadminDashboardPage } from './pages/SuperadminDashboard';
 import { LoginPage } from './pages/LoginPage';
-import { EdgeDashboardPage } from './pages/EdgeDashboard';
 import { EdgeLayout } from './components/EdgeLayout';
-import { TraderPortfolioPage } from './pages/TraderPortfolioPage';
-import { AttendanceDashboardPage } from './pages/AttendanceDashboard';
-import { AttendanceScannerPage } from './pages/AttendanceScanner';
-import { QRBookPage } from './pages/QRBook';
-import { SuperadminMarketPage } from './pages/SuperadminMarketPage';
-import { SuperadminAuditLogsPage } from './pages/SuperadminAuditLogsPage';
+
+// Lazy loaded pages for performance code-splitting
+const AdminDashboardPage = React.lazy(() => import('./pages/AdminDashboard').then(module => ({ default: module.AdminDashboardPage })));
+const SuperadminDashboardPage = React.lazy(() => import('./pages/SuperadminDashboard').then(module => ({ default: module.SuperadminDashboardPage })));
+const EdgeDashboardPage = React.lazy(() => import('./pages/EdgeDashboard').then(module => ({ default: module.EdgeDashboardPage })));
+const TraderPortfolioPage = React.lazy(() => import('./pages/TraderPortfolioPage').then(module => ({ default: module.TraderPortfolioPage })));
+const AttendanceDashboardPage = React.lazy(() => import('./pages/AttendanceDashboard').then(module => ({ default: module.AttendanceDashboardPage })));
+const AttendanceScannerPage = React.lazy(() => import('./pages/AttendanceScanner').then(module => ({ default: module.AttendanceScannerPage })));
+const QRBookPage = React.lazy(() => import('./pages/QRBook').then(module => ({ default: module.QRBookPage })));
+const SuperadminMarketPage = React.lazy(() => import('./pages/SuperadminMarketPage').then(module => ({ default: module.SuperadminMarketPage })));
+const SuperadminAuditLogsPage = React.lazy(() => import('./pages/SuperadminAuditLogsPage').then(module => ({ default: module.SuperadminAuditLogsPage })));
 
 const MainApp: React.FC = () => {
   const { isAuthenticated, hasPermission } = useAuth();
@@ -31,12 +33,8 @@ const MainApp: React.FC = () => {
     return null;
   }
 
-  if (currentPath === '/login') {
+  if (currentPath === '/login' || currentPath === '/dashboard') {
     return isAuthenticated ? <EdgeDashboardPage /> : <LoginPage title="EDGE PLATFORM LOGIN" />;
-  }
-
-  if (currentPath === '/dashboard') {
-    return <EdgeDashboardPage />;
   }
 
   // Attendance Module Routes
@@ -148,7 +146,9 @@ export function App() {
     <SocketProvider>
       <ToastProvider>
         <AuthProvider>
-          <MainApp />
+          <React.Suspense fallback={<div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>Loading...</div>}>
+            <MainApp />
+          </React.Suspense>
         </AuthProvider>
       </ToastProvider>
     </SocketProvider>

@@ -197,6 +197,9 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
                 color: #fbbf24;
               }
             }
+            .security-dropdown, .security-dropdown option {
+              color: #000000 !important;
+            }
           `}
         </style>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -232,7 +235,7 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
         <div className="form-group">
           <label className="form-label verifier-label">Security</label>
           <select
-            className="form-select font-mono verifier-input"
+            className="form-select font-mono verifier-input security-dropdown"
             value={securityId}
             onChange={(e) => setSecurityId(e.target.value)}
             disabled={!isMarketLive || submitting}
