@@ -575,8 +575,7 @@ export const QRBookPage: React.FC = () => {
                   position: 'relative',
                   width: '800px',
                   pageBreakAfter: 'always',
-                  overflow: 'hidden',
-                  lineHeight: 0
+                  overflow: 'hidden'
                 }}>
                   <img src={template.image_data} alt="" style={{ width: '800px', height: 'auto', display: 'block' }} />
                   {/* White Box 1 (Main Info) */}
@@ -593,10 +592,19 @@ export const QRBookPage: React.FC = () => {
                     backgroundColor: 'transparent',
                     padding: '2%'
                   }}>
-                    <QRCode value={p.participant_id} style={{ maxWidth: '60%', maxHeight: '60%', height: 'auto', width: 'auto' }} level="H" />
-                    <div style={{ marginTop: '10px', textAlign: 'center', width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div style={{ fontSize: p.name.length > 20 ? '18px' : '24px', fontWeight: 'bold', color: '#000', lineHeight: 1.2, wordBreak: 'break-word', maxWidth: '95%' }}>{p.name}</div>
-                      <div style={{ fontSize: '16px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
+                    <div style={{ width: '60%', aspectRatio: '1/1', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff', padding: '4px' }}>
+                      <QRCode value={p.participant_id} style={{ width: '100%', height: '100%' }} level="H" />
+                    </div>
+                    <div style={{ marginTop: '10px', textAlign: 'center', width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#ffffff', padding: '4px' }}>
+                      <div style={{ fontSize: p.name.length > 20 ? '24px' : '32px', fontWeight: 'bold', color: '#000', lineHeight: 1.2, wordBreak: 'break-word', maxWidth: '95%' }}>{p.name}</div>
+                      <div style={{ fontSize: '20px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
+                      {p.events && p.events.length > 0 && (
+                        <div style={{ fontSize: '18px', color: '#555', marginTop: '8px', fontWeight: 500, display: 'flex', flexDirection: 'column', gap: '2px', wordBreak: 'break-word', maxWidth: '95%' }}>
+                          {p.events.map((ev: string, idx: number) => (
+                            <div key={idx}>{ev}</div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   
@@ -614,7 +622,7 @@ export const QRBookPage: React.FC = () => {
                     padding: '2%',
                     overflow: 'hidden'
                   }}>
-                    <div style={{ fontSize: teamName.length > 25 ? '16px' : '20px', fontWeight: 'bold', color: '#000', textAlign: 'center', wordBreak: 'break-word', width: '100%' }}>
+                    <div style={{ fontSize: teamName.length > 25 ? '20px' : '26px', fontWeight: 'bold', color: '#000', textAlign: 'center', wordBreak: 'break-word', width: '100%', backgroundColor: '#ffffff', padding: '4px' }}>
                       {teamName}
                     </div>
                   </div>
