@@ -6,18 +6,12 @@ import { TradeEntryForm } from '../components/AdminDashboard/TradeEntryForm';
 import { TradeHistoryTable } from '../components/AdminDashboard/TradeHistoryTable';
 import { ConnectionStatus } from '../components/common/ConnectionStatus';
 import { useSocket } from '../context/SocketContext';
-import { useAuth } from '../context/AuthContext';
-import { DeskEntryScreen } from '../components/AdminDashboard/DeskEntryScreen';
 
 export const AdminDashboardPage: React.FC = () => {
-  const { hasPermission } = useAuth();
   const [eventState, setEventState] = useState<EventState | null>(null);
   const [stats, setStats] = useState<EventStats>({ total_trades: 0, total_ltp_changes: 0 });
   const [securities, setSecurities] = useState<Security[]>([]);
   const [refreshCount, setRefreshCount] = useState<number>(0);
-  
-  // Superadmins bypass desk check
-  const [deskValidated, setDeskValidated] = useState<boolean>(hasPermission('BULL_RING_SUPERADMIN') || !!sessionStorage.getItem('bull_ring_desk_id'));
 
   const fetchDashboardData = () => {
     Promise.all([
@@ -76,18 +70,6 @@ export const AdminDashboardPage: React.FC = () => {
   const handleTradeSubmitted = () => {
     setRefreshCount((prev) => prev + 1);
   };
-
-  if (!deskValidated) {
-    return (
-      <div className="admin-container">
-        <DeskEntryScreen onValidated={(id, token) => {
-          sessionStorage.setItem('bull_ring_desk_id', id);
-          sessionStorage.setItem('bull_ring_desk_token', token);
-          setDeskValidated(true);
-        }} />
-      </div>
-    );
-  }
 
   return (
     <div className="admin-container">
