@@ -47,7 +47,7 @@ export const PublicScreen: React.FC = () => {
     ])
       .then(([eventData, secData]) => {
         if (eventData.event) setEventState(eventData.event);
-        if (Array.isArray(secData)) setSecurities(secData);
+        if (Array.isArray(secData)) setSecurities(secData.map(s => enrichSecurity(s)));
         setLoading(false);
       })
       .catch((err) => {
@@ -76,17 +76,10 @@ export const PublicScreen: React.FC = () => {
     // absolute_change / percentage_change (prev_ltp → new_ltp), NOT initial_ltp.
     const handleLtpUpdate = (payload: { marketEvent: MarketEvent; security: Security }) => {
       if (payload?.security) {
-        const me = payload.marketEvent;
         setSecurities((prev) =>
           prev.map((s) => {
             if (s.id !== payload.security.id) return s;
-            const base = enrichSecurity(payload.security, s);
-            return {
-              ...base,
-              // Override computed movement with the exact recorded market-event values
-              absolute_change:  me ? Number(me.absolute_change)  : base.absolute_change,
-              percentage_change: me ? Number(me.percentage_change) : base.percentage_change,
-            };
+            return enrichSecurity(payload.security, s);
           })
         );
       }
@@ -99,12 +92,7 @@ export const PublicScreen: React.FC = () => {
         setSecurities((prev) =>
           prev.map((s) => {
             if (s.id !== payload.security.id) return s;
-            const enriched = enrichSecurity(payload.security, s);
-            if (!payload.ltpUpdated) {
-              // No LTP change — keep the previously computed movement badge
-              return { ...enriched, absolute_change: s.absolute_change, percentage_change: s.percentage_change };
-            }
-            return enriched;
+            return enrichSecurity(payload.security, s);
           })
         );
       }
@@ -116,7 +104,7 @@ export const PublicScreen: React.FC = () => {
 
     const handleEventReset = (payload: { event: EventState; securities: Security[] }) => {
       if (payload?.event) setEventState(payload.event);
-      if (payload?.securities) setSecurities(payload.securities);
+      if (payload?.securities) setSecurities(payload.securities.map(s => enrichSecurity(s)));
     };
 
     channel.bind('LTP_UPDATE', handleLtpUpdate);

@@ -10,7 +10,7 @@ interface EdgeLayoutProps {
 
 export const EdgeLayout: React.FC<EdgeLayoutProps> = ({ children, title }) => {
   const { logout, username, hasPermission, token } = useAuth();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => window.innerWidth <= 768);
   const [activeDesk, setActiveDesk] = useState<string | null>(sessionStorage.getItem('bull_ring_active_desk'));
 
   const isBullRingMode = title.includes('Bull Ring');
