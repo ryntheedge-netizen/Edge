@@ -482,7 +482,7 @@ export async function resetEvent(eventId: number) {
     await client.query(`DELETE FROM acquisition_lots`); // Note: Assuming global clear or should be filtered
 
     // Re-seed Jobbers JR01 and JR02 natively
-    const secsRes = await client.query(`SELECT id, symbol FROM securities WHERE event_id = $1`, [eventId]);
+    const secsRes = await client.query(`SELECT id, symbol, initial_ltp FROM securities WHERE event_id = $1`, [eventId]);
     const secs = secsRes.rows;
     
     const jobbers = ['JR01', 'JR02'];
@@ -495,14 +495,10 @@ export async function resetEvent(eventId: number) {
       const jobberId = jobberInsertRes.rows[0].id;
 
       for (const sec of secs) {
-        let qty = 100000;
-        if (sec.symbol === 'RELIANCE' || sec.symbol === 'MRF') {
-          qty = 1000000;
-        }
         await client.query(`
           INSERT INTO jobber_inventory (jobber_id, security_id, assigned_quantity, remaining_quantity, assigned_price)
           VALUES ($1, $2, $3, $4, $5)
-        `, [jobberId, sec.id, qty, qty, 100.0]);
+        `, [jobberId, sec.id, 10000, 10000, Number(sec.initial_ltp)]);
       }
     }
 

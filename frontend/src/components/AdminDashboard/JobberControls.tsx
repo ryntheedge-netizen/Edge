@@ -24,13 +24,6 @@ export const JobberControls: React.FC<JobberControlsProps> = ({ securities }) =>
         const data = await res.json();
         setJobbers(data);
         setCount(data.length.toString());
-        
-        setExpanded(prev => {
-          if (prev.size === 0 && data.length > 0) {
-            return new Set([data[0].id]);
-          }
-          return prev;
-        });
       }
     } catch (err) {
       console.error(err);
@@ -176,7 +169,7 @@ const JobberInventoryEditor: React.FC<{ jobber: any, securities: Security[], onU
   
   const addItem = () => {
     if (securities.length === 0) return;
-    setItems([...items, { security_id: securities[0].id, quantity: 1000, assigned_price: securities[0].initial_ltp }]);
+    setItems([...items, { security_id: securities[0].id, quantity: 10000, assigned_price: securities[0].current_ltp }]);
   };
   
   const removeItem = (idx: number) => {

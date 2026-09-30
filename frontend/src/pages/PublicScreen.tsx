@@ -161,10 +161,11 @@ export const PublicScreen: React.FC = () => {
                 <thead>
                   <tr>
                     <th className="col-symbol">SECURITY CODE</th>
+                    <th className="col-circuit">LOWER</th>
+                    <th className="col-circuit">OPEN</th>
+                    <th className="col-circuit">UPPER</th>
                     <th className="col-ltp">LTP</th>
                     <th className="col-pct">% CHANGE</th>
-                    <th className="col-circuit">LOWER CIRCUIT</th>
-                    <th className="col-circuit">UPPER CIRCUIT</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -180,10 +181,11 @@ export const PublicScreen: React.FC = () => {
                 <thead>
                   <tr>
                     <th className="col-symbol">SECURITY CODE</th>
+                    <th className="col-circuit">LOWER</th>
+                    <th className="col-circuit">OPEN</th>
+                    <th className="col-circuit">UPPER</th>
                     <th className="col-ltp">LTP</th>
                     <th className="col-pct">% CHANGE</th>
-                    <th className="col-circuit">LOWER CIRCUIT</th>
-                    <th className="col-circuit">UPPER CIRCUIT</th>
                   </tr>
                 </thead>
                 <tbody>
