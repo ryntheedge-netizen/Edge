@@ -169,7 +169,7 @@ const JobberInventoryEditor: React.FC<{ jobber: any, securities: Security[], onU
   
   const addItem = () => {
     if (securities.length === 0) return;
-    setItems([...items, { security_id: securities[0].id, quantity: 10000, assigned_price: securities[0].current_ltp }]);
+    setItems([...items, { security_id: securities[0].id, quantity: 10000 }]);
   };
   
   const removeItem = (idx: number) => {
@@ -188,7 +188,10 @@ const JobberInventoryEditor: React.FC<{ jobber: any, securities: Security[], onU
     setSaving(true);
     setSaveFeedback(null);
     try {
-      const payload = items.map(i => ({ security_id: i.security_id, quantity: i.quantity, price: i.assigned_price }));
+      const payload = items.map(i => {
+        const currentLtp = securities.find(s => s.id === i.security_id)?.current_ltp || 0;
+        return { security_id: i.security_id, quantity: 10000, price: currentLtp };
+      });
       const res = await apiFetch(`/api/jobbers/${jobber.id}/inventory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -206,7 +209,7 @@ const JobberInventoryEditor: React.FC<{ jobber: any, securities: Security[], onU
     }
   };
 
-  const totalValue = jobber.inventory?.reduce((sum: number, inv: any) => sum + (inv.remaining_quantity * inv.assigned_price), 0) || 0;
+  const totalValue = jobber.inventory?.reduce((sum: number, inv: any) => sum + (inv.remaining_quantity * (securities.find((s: Security) => s.id === inv.security_id)?.current_ltp || inv.assigned_price)), 0) || 0;
   const totalUnits = jobber.inventory?.reduce((sum: number, inv: any) => sum + inv.remaining_quantity, 0) || 0;
   const formattedTotalValue = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(totalValue);
   
@@ -253,19 +256,17 @@ const JobberInventoryEditor: React.FC<{ jobber: any, securities: Security[], onU
                     <span style={{ position: 'absolute', left: '0.5rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>₹</span>
                     <input 
                       type="number" 
-                      style={{ width: '100%', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', color: '#fff', padding: '0.6rem 0.5rem 0.6rem 1.5rem', borderRadius: '4px', outline: 'none', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }} 
-                      placeholder="0" 
-                      value={item.assigned_price} 
-                      onChange={(e) => updateItem(idx, 'assigned_price', e.target.value)} 
+                      style={{ width: '100%', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', color: '#fff', padding: '0.6rem 0.5rem 0.6rem 1.5rem', borderRadius: '4px', outline: 'none', fontSize: '0.85rem', fontFamily: 'var(--font-mono)', opacity: 0.7, cursor: 'not-allowed' }} 
+                      value={securities.find((s: Security) => s.id === item.security_id)?.current_ltp || 0} 
+                      readOnly
                     />
                   </div>
                   
                   <input 
-                    type="number" 
-                    style={{ width: '100%', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', color: '#fff', padding: '0.6rem 0.5rem', borderRadius: '4px', outline: 'none', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }} 
-                    placeholder="0" 
-                    value={item.quantity} 
-                    onChange={(e) => updateItem(idx, 'quantity', e.target.value)} 
+                    type="text" 
+                    style={{ width: '100%', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', color: '#fff', padding: '0.6rem 0.5rem', borderRadius: '4px', outline: 'none', fontSize: '0.85rem', fontFamily: 'var(--font-mono)', opacity: 0.7, cursor: 'not-allowed' }} 
+                    value="10,000" 
+                    readOnly
                   />
                   
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -371,11 +372,12 @@ const JobberInventoryEditor: React.FC<{ jobber: any, securities: Security[], onU
               </thead>
               <tbody>
                 {jobber.inventory.map((inv: any, i: number) => {
-                  const total = inv.remaining_quantity * inv.assigned_price;
+                  const currentLtp = securities.find((s: Security) => s.id === inv.security_id)?.current_ltp || inv.assigned_price;
+                  const total = inv.remaining_quantity * currentLtp;
                   return (
                     <tr key={i} style={{ borderBottom: i < jobber.inventory.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
                       <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: '#e2e8f0' }}>{inv.security_symbol.toUpperCase()}</td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>₹{inv.assigned_price.toLocaleString()}</td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>₹{currentLtp.toLocaleString()}</td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{inv.remaining_quantity.toLocaleString()}</td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#10b981' }}>₹{total.toLocaleString()}</td>
                     </tr>

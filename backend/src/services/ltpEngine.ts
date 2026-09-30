@@ -74,12 +74,27 @@ function isJobber(id: string) {
   return upper.startsWith('JR');
 }
 
+function normalizeParticipantId(id: string): string {
+  let cleaned = (id || '').trim();
+  if (/^\d+$/.test(cleaned)) {
+    const num = parseInt(cleaned, 10);
+    if (num >= 1 && num <= 99) return `TR${num.toString().padStart(2, '0')}`;
+  } else if (/^j\d+$/i.test(cleaned)) {
+    const num = parseInt(cleaned.substring(1), 10);
+    if (num >= 1 && num <= 99) return `JR${num.toString().padStart(2, '0')}`;
+  } else if (/^b\d+$/i.test(cleaned)) {
+    const num = parseInt(cleaned.substring(1), 10);
+    if (num >= 1 && num <= 99) return `BR${num.toString().padStart(2, '0')}`;
+  }
+  return cleaned.toUpperCase();
+}
+
 /**
  * Execute a trade transactionally with strict LTP threshold logic and wallet validation.
  */
 export async function executeTrade(input: TradeInput): Promise<TradeExecutionResult> {
-  let buyerId = (input.buyerId || '').trim();
-  let sellerId = (input.sellerId || '').trim();
+  let buyerId = normalizeParticipantId(input.buyerId);
+  let sellerId = normalizeParticipantId(input.sellerId);
   if (!buyerId || !sellerId) {
     throw new Error('Buyer ID and Seller ID are required');
   }
@@ -424,6 +439,9 @@ export async function endMarket(eventId: number) {
 
       // Square off holding
       await client.query(`UPDATE trader_holdings SET quantity = 0 WHERE id = $1`, [h.id]);
+      
+      // Square off acquisition lots
+      await client.query(`UPDATE acquisition_lots SET remaining_quantity = 0 WHERE trader_id = (SELECT trader_identifier FROM traders WHERE id = $1) AND security_id = $2`, [h.trader_id, h.security_id]);
 
       // Add cash to trader
       await client.query(`UPDATE traders SET current_cash_balance = current_cash_balance + $1 WHERE id = $2`, [settlementValue, h.trader_id]);
