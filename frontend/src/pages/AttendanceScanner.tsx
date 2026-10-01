@@ -174,11 +174,30 @@ export const AttendanceScannerPage: React.FC = () => {
       await cleanupPromiseRef.current;
     }
     
+    // 1. Verify Camera API is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setScannerError("Camera API is not supported in this browser.");
+      setScannerState('ERROR');
+      return;
+    }
+    
     try {
+      // 2. Request permission explicitly to allow native browser dialog to appear
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      
+      // 3. Stop the stream to release the hardware camera so Html5Qrcode can bind to it
+      stream.getTracks().forEach(track => track.stop());
+      
+      // 4. Wait for hardware release and React DOM flush (ensuring qr-reader is display: block)
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      if (!mountedRef.current) return;
+
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode("qr-reader");
       }
       
+      // 5. Start the scanner now that permission is granted and container is visible
       await scannerRef.current.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -209,15 +228,15 @@ export const AttendanceScannerPage: React.FC = () => {
         scannerRef.current = null;
       }
       if (mountedRef.current) {
-        const errorMsg = typeof err === 'string' ? err : err.message || 'Unknown camera error';
+        const errorMsg = typeof err === 'string' ? err : err.message || err.name || 'Unknown camera error';
         
         let friendlyMsg = "Could not start camera.";
-        if (errorMsg.includes('NotReadableError') || errorMsg.includes('track')) {
+        if (errorMsg.includes('NotReadableError') || errorMsg.includes('track') || errorMsg.includes('Concurrent')) {
           friendlyMsg = "Camera is already in use by another application or tab. Please close other camera apps and retry.";
         } else if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission')) {
-          friendlyMsg = "Camera access was denied. Please grant permission in your browser settings.";
-        } else if (errorMsg.includes('NotFoundError')) {
-          friendlyMsg = "No camera device found on this device.";
+          friendlyMsg = "Camera access was denied. Please grant permission in your browser/site settings and try again.";
+        } else if (errorMsg.includes('NotFoundError') || errorMsg.includes('DevicesNotFoundError')) {
+          friendlyMsg = "No compatible camera device found on this device.";
         }
         
         setScannerError(`${friendlyMsg} (${errorMsg})`);

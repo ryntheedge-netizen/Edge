@@ -187,7 +187,7 @@ export const EdgeLayout: React.FC<EdgeLayoutProps> = ({ children, title }) => {
                 <NavItem icon={<QrCode size={20} />} label="Dashboard" isCollapsed={isCollapsed} onClick={() => navigate('/attendance')} />
               )}
               {(hasPermission('ATTENDANCE_ADMIN') || hasPermission('ATTENDANCE_VERIFIER')) && (
-                <NavItem icon={<Scan size={20} />} label="Scanning Station" isCollapsed={isCollapsed} onClick={() => navigate('/attendance/scan')} />
+                <NavItem icon={<Scan size={20} />} label="Scanning Station" isCollapsed={isCollapsed} onClick={() => navigate('/attendance/scanner')} />
               )}
             </>
           )}
