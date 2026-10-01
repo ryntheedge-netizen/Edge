@@ -124,10 +124,17 @@ export async function migrateSecurities(specificEventId?: number, client?: PoolC
   ];
 
   let targetEventId = specificEventId;
+  let targetEventStatus = 'NOT_STARTED';
   if (!targetEventId) {
-    const existingEvent = await runner.query(`SELECT id FROM events ORDER BY id ASC LIMIT 1`);
+    const existingEvent = await runner.query(`SELECT id, status FROM events ORDER BY id ASC LIMIT 1`);
     if (existingEvent.rows.length === 0) return;
     targetEventId = existingEvent.rows[0].id;
+    targetEventStatus = existingEvent.rows[0].status;
+  } else {
+    const existingEvent = await runner.query(`SELECT status FROM events WHERE id = $1`, [targetEventId]);
+    if (existingEvent.rows.length > 0) {
+      targetEventStatus = existingEvent.rows[0].status;
+    }
   }
 
   const currentSecurities = await runner.query(`SELECT id, symbol FROM securities WHERE event_id = $1`, [targetEventId]);
@@ -144,11 +151,21 @@ export async function migrateSecurities(specificEventId?: number, client?: PoolC
     const existing = await runner.query(`SELECT id, initial_ltp FROM securities WHERE event_id = $1 AND symbol = $2`, [targetEventId, data.symbol]);
     
     if (existing.rows.length > 0) {
-      await runner.query(`
-        UPDATE securities
-        SET name = $1, base_price = $2, lower_circuit = $3, upper_circuit = $4, updated_at = CURRENT_TIMESTAMP
-        WHERE event_id = $5 AND symbol = $6
-      `, [data.name, data.base_price, data.lower_circuit, data.upper_circuit, targetEventId, data.symbol]);
+      if (targetEventStatus === 'NOT_STARTED') {
+        // Safe to overwrite initial_ltp and current_ltp because market hasn't started
+        await runner.query(`
+          UPDATE securities
+          SET name = $1, base_price = $2, initial_ltp = $2, current_ltp = $2, lower_circuit = $3, upper_circuit = $4, updated_at = CURRENT_TIMESTAMP
+          WHERE event_id = $5 AND symbol = $6
+        `, [data.name, initLtp, data.lower_circuit, data.upper_circuit, targetEventId, data.symbol]);
+      } else {
+        // Market is live or ended, only update bounds and metadata
+        await runner.query(`
+          UPDATE securities
+          SET name = $1, base_price = $2, lower_circuit = $3, upper_circuit = $4, updated_at = CURRENT_TIMESTAMP
+          WHERE event_id = $5 AND symbol = $6
+        `, [data.name, data.base_price, data.lower_circuit, data.upper_circuit, targetEventId, data.symbol]);
+      }
 
       if (data.symbol === 'RELIANCE' && (existing.rows[0].initial_ltp === 100 || existing.rows[0].initial_ltp === 1234)) {
         await runner.query(`UPDATE securities SET initial_ltp = 988, current_ltp = 988 WHERE id = $1`, [existing.rows[0].id]);
