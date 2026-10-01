@@ -138,7 +138,7 @@ export const QRBookPage: React.FC = () => {
         let nameLines: string[] = [];
         let nameBlockHeight = 0;
         let idBlockHeight = 0;
-        let totalContentHeight = 0;
+
         let fontAscent15 = 0;
         
         const gapQRName = 4;
@@ -155,30 +155,35 @@ export const QRBookPage: React.FC = () => {
           nameBlockHeight = nameLines.length * lineHeight;
           idBlockHeight = 15 * 0.3527 * 1.15; // keep ID fixed at 15
           
-          totalContentHeight = qrSize + gapQRName + nameBlockHeight + gapNameID + idBlockHeight;
           
           const words = formattedName.split(' ');
           const longestWordWidth = Math.max(...words.map((w: string) => doc.getTextWidth(w)));
           
-          if (totalContentHeight <= b1H && longestWordWidth <= b1W * 0.95) {
+          if (nameBlockHeight + idBlockHeight <= b1H - qrSize - gapQRName && longestWordWidth <= b1W * 0.95) {
             break;
           }
           nameFontSize -= 0.5;
         }
-        const startY = b1Y + (b1H - totalContentHeight) / 2;
         
-        // Draw QR
-        doc.addImage(qrDataUrl, 'PNG', qrX, startY, qrSize, qrSize);
+        // Anchor QR code at the top of Box 1 to ensure identical placement across all pages
+        const qrFixedY = b1Y;
+        doc.addImage(qrDataUrl, 'PNG', qrX, qrFixedY, qrSize, qrSize);
+        
+        // Vertically center the text block in the remaining space below the QR code
+        const remainingY = qrFixedY + qrSize;
+        const remainingHeight = b1H - qrSize;
+        const textBlockHeight = nameBlockHeight + gapNameID + idBlockHeight;
+        const textStartY = remainingY + (remainingHeight - textBlockHeight) / 2;
         
         // Draw Name
-        const nameBaselineY = startY + qrSize + gapQRName + fontAscent15;
+        const nameBaselineY = textStartY + fontAscent15;
         doc.text(nameLines, b1X + b1W / 2, nameBaselineY, { align: 'center' });
         
         // Draw ID
         doc.setFontSize(15);
         
         // Draw ID
-        const idBaselineY = startY + qrSize + gapQRName + nameBlockHeight + gapNameID + fontAscent15;
+        const idBaselineY = textStartY + nameBlockHeight + gapNameID + fontAscent15;
         doc.text(p.participant_id, b1X + b1W / 2, idBaselineY, { align: 'center' });
         
         // Box 2 Layout (Team Name)
@@ -208,11 +213,7 @@ export const QRBookPage: React.FC = () => {
         
         const teamStartY = b2Y + (b2H - teamHeight) / 2 + (teamFontSize * 0.3527);
         
-        // @ts-ignore: charSpace is supported in options but might not be typed fully
-        doc.text(teamLines, b2X + b2W / 2, teamStartY, { 
-          align: 'center', 
-          charSpace: 0.0987 
-        });
+        doc.text(teamLines, b2X + b2W / 2, teamStartY, { align: 'center' });
       }
       
       doc.save(`EDGE_QR_Book_${isSample ? 'Sample' : 'Full'}.pdf`);
