@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApi } from '../../hooks/useApi';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, Play, Pause } from 'lucide-react';
 import { EventState } from '../../types';
 
 interface SuperadminControlsProps {
@@ -73,25 +73,31 @@ export const SuperadminControls: React.FC<SuperadminControlsProps> = ({ eventSta
     }
   };
 
-  const handleEndMarket = async () => {
-    if (!window.confirm('Are you sure you want to end the market? This will stop further market operations.')) return;
-    
+  const updateStatus = async (status: string) => {
+    if (!token) return;
     setSubmitting(true);
     setFeedback(null);
     try {
       const res = await apiFetch('/api/market/status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'ENDED' })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      setFeedback({ type: 'success', message: 'Market Ended Successfully' });
+      setFeedback({ type: 'success', message: `Market status updated to ${status}` });
       onStateChange();
     } catch (err: any) {
-      setFeedback({ type: 'error', message: err.message });
+      setFeedback({ type: 'error', message: err.message || 'Status change failed' });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEndMarket = async () => {
+    if (!window.confirm('Are you sure you want to end the market? This will stop further market operations.')) return;
+    await updateStatus('ENDED');
   };
 
   if (!eventState) return null;
@@ -118,6 +124,22 @@ export const SuperadminControls: React.FC<SuperadminControlsProps> = ({ eventSta
         </div>
         
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button 
+            className="btn btn-success" 
+            onClick={() => updateStatus('LIVE')} 
+            disabled={submitting || eventState.status !== 'NOT_STARTED'}
+          >
+            <Play size={16} /> Start Market
+          </button>
+          
+          <button 
+            className="btn btn-warning" 
+            onClick={() => updateStatus(eventState.status === 'PAUSED' ? 'LIVE' : 'PAUSED')} 
+            disabled={submitting || (eventState.status !== 'LIVE' && eventState.status !== 'PAUSED')}
+          >
+            {eventState.status === 'PAUSED' ? <><Play size={16} /> Resume</> : <><Pause size={16} /> Pause</>}
+          </button>
+
           <button className="btn" style={{ backgroundColor: '#dc2626', color: 'white' }} onClick={handleEndMarket} disabled={submitting || eventState.status === 'ENDED'}>
             End Market
           </button>

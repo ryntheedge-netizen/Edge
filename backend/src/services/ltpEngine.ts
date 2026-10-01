@@ -74,12 +74,27 @@ function isJobber(id: string) {
   return upper.startsWith('JR');
 }
 
+function normalizeParticipantId(id: string): string {
+  let cleaned = (id || '').trim();
+  if (/^\d+$/.test(cleaned)) {
+    const num = parseInt(cleaned, 10);
+    if (num >= 1 && num <= 99) return `TR${num.toString().padStart(2, '0')}`;
+  } else if (/^j\d+$/i.test(cleaned)) {
+    const num = parseInt(cleaned.substring(1), 10);
+    if (num >= 1 && num <= 99) return `JR${num.toString().padStart(2, '0')}`;
+  } else if (/^b\d+$/i.test(cleaned)) {
+    const num = parseInt(cleaned.substring(1), 10);
+    if (num >= 1 && num <= 99) return `BR${num.toString().padStart(2, '0')}`;
+  }
+  return cleaned.toUpperCase();
+}
+
 /**
  * Execute a trade transactionally with strict LTP threshold logic and wallet validation.
  */
 export async function executeTrade(input: TradeInput): Promise<TradeExecutionResult> {
-  let buyerId = (input.buyerId || '').trim();
-  let sellerId = (input.sellerId || '').trim();
+  let buyerId = normalizeParticipantId(input.buyerId);
+  let sellerId = normalizeParticipantId(input.sellerId);
   if (!buyerId || !sellerId) {
     throw new Error('Buyer ID and Seller ID are required');
   }
@@ -139,12 +154,6 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     security.accumulated_trade_value = Number(security.accumulated_trade_value);
     security.threshold_amount = Number(security.threshold_amount);
 
-    const minPrice = security.lower_circuit;
-    const maxPrice = security.upper_circuit;
-    if (input.price < minPrice || input.price > maxPrice) {
-      throw new Error(`Trade rejected: Price ₹${input.price} is outside the allowed circuit range (LC: ₹${minPrice.toFixed(2)} - UC: ₹${maxPrice.toFixed(2)}).`);
-    }
-
     const idRegex = /^[tbj]r\d{2}$/i;
     buyerId = buyerId.toUpperCase();
     sellerId = sellerId.toUpperCase();
@@ -169,6 +178,12 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     }
     if (input.quantity <= 0 || input.quantity % 5 !== 0 || input.quantity > 100000000) {
       insertScrap(`Trade rejected: Quantity must be a positive multiple of 5.`);
+    }
+
+    const minPrice = security.lower_circuit;
+    const maxPrice = security.upper_circuit;
+    if (input.price < minPrice || input.price > maxPrice) {
+      insertScrap(`Trade rejected: Price ₹${input.price} is outside the allowed circuit range (LC: ₹${minPrice.toFixed(2)} - UC: ₹${maxPrice.toFixed(2)}).`);
     }
 
     // 3. Helper to distinguish Jobber vs Trader
@@ -424,6 +439,9 @@ export async function endMarket(eventId: number) {
 
       // Square off holding
       await client.query(`UPDATE trader_holdings SET quantity = 0 WHERE id = $1`, [h.id]);
+      
+      // Square off acquisition lots
+      await client.query(`UPDATE acquisition_lots SET remaining_quantity = 0 WHERE trader_id = (SELECT trader_identifier FROM traders WHERE id = $1) AND security_id = $2`, [h.trader_id, h.security_id]);
 
       // Add cash to trader
       await client.query(`UPDATE traders SET current_cash_balance = current_cash_balance + $1 WHERE id = $2`, [settlementValue, h.trader_id]);
@@ -482,7 +500,7 @@ export async function resetEvent(eventId: number) {
     await client.query(`DELETE FROM acquisition_lots`); // Note: Assuming global clear or should be filtered
 
     // Re-seed Jobbers JR01 and JR02 natively
-    const secsRes = await client.query(`SELECT id, symbol FROM securities WHERE event_id = $1`, [eventId]);
+    const secsRes = await client.query(`SELECT id, symbol, initial_ltp FROM securities WHERE event_id = $1`, [eventId]);
     const secs = secsRes.rows;
     
     const jobbers = ['JR01', 'JR02'];
@@ -495,14 +513,10 @@ export async function resetEvent(eventId: number) {
       const jobberId = jobberInsertRes.rows[0].id;
 
       for (const sec of secs) {
-        let qty = 100000;
-        if (sec.symbol === 'RELIANCE' || sec.symbol === 'MRF') {
-          qty = 1000000;
-        }
         await client.query(`
           INSERT INTO jobber_inventory (jobber_id, security_id, assigned_quantity, remaining_quantity, assigned_price)
           VALUES ($1, $2, $3, $4, $5)
-        `, [jobberId, sec.id, qty, qty, 100.0]);
+        `, [jobberId, sec.id, 10000, 10000, Number(sec.initial_ltp)]);
       }
     }
 

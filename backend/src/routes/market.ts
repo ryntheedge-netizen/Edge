@@ -44,10 +44,8 @@ router.post('/status', authenticateAdmin, async (req: Request, res: Response) =>
       return res.status(400).json({ error: 'Invalid market status requested' });
     }
 
-    if (status === 'ENDED' || status === 'RESET') {
-      if (!(req as any).user.permissions.includes('BULL_RING_SUPERADMIN') && !(req as any).user.permissions.includes('EDGE_SUPERADMIN')) {
-        return res.status(403).json({ error: 'Forbidden. Only Superadmin can END or RESET MARKET.' });
-      }
+    if (!(req as any).user.permissions.includes('BULL_RING_SUPERADMIN') && !(req as any).user.permissions.includes('EDGE_SUPERADMIN')) {
+      return res.status(403).json({ error: 'Forbidden. Only Superadmin can change market status.' });
     }
 
     let targetEventId = eventId;

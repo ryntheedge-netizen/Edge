@@ -81,7 +81,7 @@ router.post('/count', authenticateSuperadmin, async (req: Request, res: Response
         for (const s of securities) {
           await client.query(`
             INSERT INTO broker_inventory (broker_id, security_id, assigned_quantity, remaining_quantity, assigned_price)
-            VALUES ($1, $2, 0, 0, $3)
+            VALUES ($1, $2, 10000, 10000, $3)
             ON CONFLICT DO NOTHING
           `, [b.id, s.id, Number(s.current_ltp)]);
         }

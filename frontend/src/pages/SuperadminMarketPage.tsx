@@ -56,12 +56,14 @@ export const SuperadminMarketPage: React.FC = () => {
     channel.bind('MARKET_STATUS_CHANGED', triggerRefresh);
     channel.bind('EVENT_RESET', triggerRefresh);
     channel.bind('LTP_UPDATE', triggerRefresh);
+    channel.bind('SECURITIES_UPDATED', triggerRefresh);
 
     return () => {
       channel.unbind('TRADE_EXECUTED', triggerRefresh);
       channel.unbind('MARKET_STATUS_CHANGED', triggerRefresh);
       channel.unbind('EVENT_RESET', triggerRefresh);
       channel.unbind('LTP_UPDATE', triggerRefresh);
+      channel.unbind('SECURITIES_UPDATED', triggerRefresh);
     };
   }, [channel]);
 

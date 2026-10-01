@@ -468,7 +468,7 @@ router.get('/qr-book', authenticateAttendanceAdmin, async (req: Request, res: Re
           participants: []
         };
       }
-      p.events = participationsRes.rows.filter(ep => ep.participant_id === p.id).map(ep => ep.activity_name);
+      p.events = participationsRes.rows.filter(ep => String(ep.participant_id) === String(p.id)).map(ep => ep.activity_name);
       grouped[teamLabel].participants.push(p);
     }
 
@@ -507,6 +507,16 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
     let inheritedTeamName = '';
     let inheritedTeamCode = '';
     let processedRows: any[] = [];
+    const seenIds = new Set();
+    const seenCombos = new Set();
+
+    const normalizeYesNo = (val: any) => {
+      if (!val) return 'No';
+      const s = String(val).trim().toLowerCase();
+      if (['yes', 'y', 'true', '1'].includes(s)) return 'Yes';
+      if (['no', 'n', 'false', '0', ''].includes(s)) return 'No';
+      return 'Invalid';
+    };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -535,7 +545,27 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
       let existingParticipant = null;
 
       if (row.participant_id) {
+        if (seenIds.has(row.participant_id)) {
+          hasConflict = true;
+          conflictReason.push(`Duplicate Participant ID within Excel file: ${row.participant_id}`);
+        }
+        seenIds.add(row.participant_id);
         existingParticipant = existingParticipants.find(p => p.participant_id === row.participant_id);
+      } else {
+        const combo = `${row.name}-${row.contact}`;
+        if (seenCombos.has(combo)) {
+          hasConflict = true;
+          conflictReason.push(`Duplicate Name/Contact combination within Excel file: ${row.name}`);
+        }
+        seenCombos.add(combo);
+        const matches = existingParticipants.filter(p => p.name.toLowerCase() === row.name.toLowerCase() && p.contact === row.contact);
+        if (matches.length === 1) {
+          existingParticipant = matches[0];
+          row.participant_id = existingParticipant.participant_id; // Set it so it gets reused
+        } else if (matches.length > 1) {
+          hasConflict = true;
+          conflictReason.push("Ambiguous identity: multiple matching records found.");
+        }
       }
 
       if (existingParticipant) {
@@ -549,26 +579,43 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
             conflictReason.push(`Team change from ${extTeam.name} to ${resolvedTeamName}`);
           }
         }
+        if (row.contact && existingParticipant.contact && row.contact !== existingParticipant.contact) {
+            hasConflict = true;
+            conflictReason.push(`Contact mismatch: Existing (${existingParticipant.contact}) vs Excel (${row.contact})`);
+        }
       } else {
         preview.summary.qrGenerated++;
       }
 
-      const unknownEvents: string[] = [];
-      if (row.events && Array.isArray(row.events)) {
-        for (const ev of row.events) {
-          preview.summary.events.add(ev);
-          if (!activities.find(a => a.name.toLowerCase() === ev.toLowerCase())) {
-            unknownEvents.push(ev);
-            hasWarning = true;
-          }
-        }
-      }
+      const eArth = normalizeYesNo(row.event_arthneeti);
+      const eFin = normalizeYesNo(row.event_finance);
+      const eBrand = normalizeYesNo(row.event_brand);
+      const eBull = normalizeYesNo(row.event_bull);
+      const eAi = normalizeYesNo(row.event_ai);
 
+      const resolvedEvents: string[] = [];
+
+      const checkEvent = (val: string, name: string) => {
+        if (val === 'Yes') resolvedEvents.push(name);
+        else if (val === 'Invalid') {
+           hasWarning = true; 
+           conflictReason.push(`Invalid value for ${name}`);
+        }
+      };
+
+      checkEvent(eArth, 'Arthneeti');
+      checkEvent(eFin, 'Finance Ka Funda');
+      checkEvent(eBrand, 'Brand Bazigaar');
+      checkEvent(eBull, 'Bull Ring');
+      checkEvent(eAi, 'AI Ki Baat Cheet');
+
+      for (const ev of resolvedEvents) preview.summary.events.add(ev);
       if (resolvedTeamName) preview.summary.teams.add(resolvedTeamName);
 
       processedRows.push({
         row_index: i + 2,
         ...row,
+        events: resolvedEvents,
         raw_team: rawTeamName || rawTeamCode || 'Blank',
         resolved_team_name: resolvedTeamName,
         resolved_team_code: resolvedTeamCode,
@@ -576,7 +623,7 @@ router.post('/import-preview', authenticateAttendanceAdmin, async (req: Request,
         qr_action,
         hasConflict,
         hasWarning,
-        reasons: [...conflictReason, ...unknownEvents.map(e => `Unknown event: ${e}`)]
+        reasons: conflictReason
       });
     }
 
@@ -693,14 +740,14 @@ router.post('/import-commit', authenticateAttendanceAdmin, async (req: Request, 
         }
 
         if (row.events && Array.isArray(row.events)) {
+          // Clear existing participations to ensure we reflect exactly the latest Excel mapping
+          await client.query(`DELETE FROM edge_event_participations WHERE participant_id = $1`, [dbParticipantId]);
+          
           for (const ev of row.events) {
             const act = activities.find(a => a.name.toLowerCase() === ev.toLowerCase());
             if (act) {
-              const eepRes = await client.query(`SELECT 1 FROM edge_event_participations WHERE participant_id = $1 AND activity_id = $2`, [dbParticipantId, act.id]);
-              if (eepRes.rows.length === 0) {
-                await client.query(`INSERT INTO edge_event_participations (participant_id, activity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [dbParticipantId, act.id]);
-                rollbackData.insertedParticipations.push({ p_id: Number(dbParticipantId), a_id: act.id });
-              }
+              await client.query(`INSERT INTO edge_event_participations (participant_id, activity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [dbParticipantId, act.id]);
+              rollbackData.insertedParticipations.push({ p_id: Number(dbParticipantId), a_id: act.id });
             }
           }
         }
@@ -813,6 +860,82 @@ router.delete('/team/:id', authenticateAttendanceAdmin, async (req: Request, res
     res.json({ success: true, message: "Team and all its participants deleted successfully" });
   } catch (err: any) {
     res.status(500).json({ success: false, message: "Failed to delete team", error: err.message });
+  }
+});
+
+router.post('/id-template', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const { image_data, config_data } = req.body;
+    await query(`INSERT INTO edge_id_templates (image_data, config_data) VALUES ($1, $2)`, [image_data, JSON.stringify(config_data)]);
+    res.json({ success: true, message: "Template saved" });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to save template" });
+  }
+});
+
+router.get('/id-template', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const tRes = await query(`SELECT * FROM edge_id_templates ORDER BY created_at DESC LIMIT 1`);
+    if (tRes.rows.length === 0) return res.json({ success: false, message: "No template found" });
+    const t = tRes.rows[0];
+    t.config_data = JSON.parse(t.config_data);
+    res.json({ success: true, template: t });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to fetch template" });
+  }
+});
+
+router.get('/audit', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const recordsRes = await query(`
+      SELECT 
+        r.id,
+        r.timestamp,
+        p.participant_id,
+        p.name as participant_name,
+        p.contact,
+        t.team_code,
+        st.stage_type as attendance_category,
+        a.name as event_name,
+        st.day,
+        s.name as station,
+        'Present' as attendance_status,
+        r.attendance_method as action_type,
+        'Scanner' as marked_by,
+        'Recorded successfully' as audit_remarks
+      FROM attendance_records r
+      JOIN edge_participants p ON r.participant_id = p.id
+      LEFT JOIN edge_teams t ON p.team_id = t.id
+      JOIN attendance_stages st ON r.stage_id = st.id
+      LEFT JOIN attendance_stations s ON r.station_id = s.id
+      LEFT JOIN edge_activities a ON st.stage_type = 'EVENT' AND s.activity_id = a.id
+      ORDER BY r.timestamp DESC
+    `);
+    
+    // Also include logs from attendance_audit_logs if needed, but the requirement specifies 
+    // a table of attendance activity with specific columns.
+    
+    res.json({ success: true, logs: recordsRes.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to fetch audit logs" });
+  }
+});
+
+router.post('/end-day', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  const user = (req as any).user.username;
+  try {
+    await withTransaction(async (client: PoolClient) => {
+      // Lock active stations for the current day
+      await client.query(`UPDATE attendance_stations SET status = 'STOPPED' WHERE status = 'ACTIVE'`);
+      
+      // Log DAY_ENDED
+      await client.query(`INSERT INTO attendance_audit_logs (actor, action, metadata) VALUES ($1, $2, $3)`, [
+        user, 'DAY_ENDED', JSON.stringify({ timestamp: new Date().toISOString() })
+      ]);
+    });
+    res.json({ success: true, message: "Day ended successfully. Active stations stopped." });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to end day" });
   }
 });
 

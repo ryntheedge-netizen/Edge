@@ -91,43 +91,50 @@ export async function migrateSecurities(specificEventId?: number, client?: PoolC
   const runner: any = client || pool;
   
   const actualSecurities = [
-    { name: 'Adani Ports & SEZ', symbol: 'ADANIPORTS', base_price: 1794, lower_circuit: 1436, upper_circuit: 2152 },
-    { name: 'Asian Paints', symbol: 'ASIANPAINT', base_price: 2450, lower_circuit: 1960, upper_circuit: 2940 },
-    { name: 'Axis Bank', symbol: 'AXISBANK', base_price: 1248, lower_circuit: 999, upper_circuit: 1497 },
-    { name: 'Bajaj Finance', symbol: 'BAJFINANCE', base_price: 1035, lower_circuit: 828, upper_circuit: 1242 },
-    { name: 'Bajaj Finserv', symbol: 'BAJAJFINSV', base_price: 1860, lower_circuit: 1488, upper_circuit: 2232 },
-    { name: 'Bharat Electronics', symbol: 'BEL', base_price: 394, lower_circuit: 316, upper_circuit: 472 },
-    { name: 'Bharti Airtel', symbol: 'BHARTIARTL', base_price: 1855, lower_circuit: 1484, upper_circuit: 2226 },
-    { name: 'Eternal', symbol: 'ETERNAL', base_price: 327, lower_circuit: 262, upper_circuit: 392 },
-    { name: 'HCLTech', symbol: 'HCLTECH', base_price: 1242, lower_circuit: 994, upper_circuit: 1490 },
-    { name: 'HDFC Bank', symbol: 'HDFCBANK', base_price: 731, lower_circuit: 585, upper_circuit: 877 },
-    { name: 'Hindustan Unilever', symbol: 'HINDUNILVR', base_price: 1940, lower_circuit: 1552, upper_circuit: 2328 },
-    { name: 'ICICI Bank', symbol: 'ICICIBANK', base_price: 1349, lower_circuit: 1080, upper_circuit: 1618 },
-    { name: 'IndiGo', symbol: 'INDIGO', base_price: 4925, lower_circuit: 3940, upper_circuit: 5910 },
-    { name: 'Infosys', symbol: 'INFY', base_price: 1042, lower_circuit: 834, upper_circuit: 1250 },
-    { name: 'ITC', symbol: 'ITC', base_price: 264, lower_circuit: 212, upper_circuit: 316 },
-    { name: 'Kotak Mahindra Bank', symbol: 'KOTAKBANK', base_price: 415, lower_circuit: 332, upper_circuit: 498 },
-    { name: 'Larsen & Toubro', symbol: 'LT', base_price: 3885, lower_circuit: 3108, upper_circuit: 4662 },
-    { name: 'Mahindra & Mahindra', symbol: 'M&M', base_price: 3065, lower_circuit: 2452, upper_circuit: 3678 },
-    { name: 'Maruti Suzuki', symbol: 'MARUTI', base_price: 12129, lower_circuit: 9704, upper_circuit: 14554 },
-    { name: 'NTPC', symbol: 'NTPC', base_price: 325, lower_circuit: 260, upper_circuit: 390 },
-    { name: 'Power Grid Corp', symbol: 'POWERGRID', base_price: 267, lower_circuit: 214, upper_circuit: 320 },
-    { name: 'Reliance Industries', symbol: 'RELIANCE', base_price: 1234, lower_circuit: 988, upper_circuit: 1480 },
-    { name: 'State Bank of India', symbol: 'SBIN', base_price: 993, lower_circuit: 795, upper_circuit: 1191 },
-    { name: 'Sun Pharma', symbol: 'SUNPHARMA', base_price: 1832, lower_circuit: 1466, upper_circuit: 2198 },
-    { name: 'Tata Consultancy Services', symbol: 'TCS', base_price: 2090, lower_circuit: 1672, upper_circuit: 2508 },
-    { name: 'Tata Steel', symbol: 'TATASTEEL', base_price: 184, lower_circuit: 148, upper_circuit: 220 },
-    { name: 'Tech Mahindra', symbol: 'TECHM', base_price: 1529, lower_circuit: 1224, upper_circuit: 1834 },
-    { name: 'Titan Company', symbol: 'TITAN', base_price: 4816, lower_circuit: 3853, upper_circuit: 5779 },
-    { name: 'Trent', symbol: 'TRENT', base_price: 2813, lower_circuit: 2251, upper_circuit: 3375 },
-    { name: 'UltraTech Cement', symbol: 'ULTRACEMCO', base_price: 11014, lower_circuit: 8812, upper_circuit: 13216 }
+    { name: 'Adani Ports & SEZ', symbol: 'ADANIPORTS', base_price: 1788, lower_circuit: 1610, upper_circuit: 1966 },
+    { name: 'Asian Paints', symbol: 'ASIANPAINT', base_price: 2438, lower_circuit: 2200, upper_circuit: 2688 },
+    { name: 'Axis Bank', symbol: 'AXISBANK', base_price: 1212, lower_circuit: 1101, upper_circuit: 1344 },
+    { name: 'Bajaj Finance', symbol: 'BAJFINANCE', base_price: 991, lower_circuit: 896, upper_circuit: 1094 },
+    { name: 'Bajaj Finserv', symbol: 'BAJAJFINSV', base_price: 1767, lower_circuit: 1594, upper_circuit: 1948 },
+    { name: 'Bharat Electronics', symbol: 'BEL', base_price: 395, lower_circuit: 354, upper_circuit: 402 },
+    { name: 'Bharti Airtel', symbol: 'BHARTIARTL', base_price: 1772, lower_circuit: 1670, upper_circuit: 1963 },
+    { name: 'Eternal', symbol: 'ETERNAL', base_price: 336, lower_circuit: 302, upper_circuit: 368 },
+    { name: 'HCLTech', symbol: 'HCLTECH', base_price: 1253, lower_circuit: 1134, upper_circuit: 1385 },
+    { name: 'HDFC Bank', symbol: 'HDFCBANK', base_price: 731, lower_circuit: 663, upper_circuit: 809 },
+    { name: 'Hindustan Unilever', symbol: 'HINDUNILVR', base_price: 1935, lower_circuit: 1746, upper_circuit: 2134 },
+    { name: 'ICICI Bank', symbol: 'ICICIBANK', base_price: 1325, lower_circuit: 1194, upper_circuit: 1459 },
+    { name: 'IndiGo', symbol: 'INDIGO', base_price: 4935, lower_circuit: 4442, upper_circuit: 5428 },
+    { name: 'Infosys', symbol: 'INFY', base_price: 1000, lower_circuit: 901, upper_circuit: 1101 },
+    { name: 'ITC', symbol: 'ITC', base_price: 268, lower_circuit: 243, upper_circuit: 295 },
+    { name: 'Kotak Mahindra Bank', symbol: 'KOTAKBANK', base_price: 402, lower_circuit: 364, upper_circuit: 443 },
+    { name: 'Larsen & Toubro', symbol: 'LT', base_price: 3855, lower_circuit: 3492, upper_circuit: 4266 },
+    { name: 'Mahindra & Mahindra', symbol: 'M&M', base_price: 3029, lower_circuit: 2728, upper_circuit: 3334 },
+    { name: 'Maruti Suzuki', symbol: 'MARUTI', base_price: 12071, lower_circuit: 10864, upper_circuit: 13278 },
+    { name: 'NTPC', symbol: 'NTPC', base_price: 327, lower_circuit: 294, upper_circuit: 358 },
+    { name: 'Power Grid Corp', symbol: 'POWERGRID', base_price: 270, lower_circuit: 243, upper_circuit: 296 },
+    { name: 'Reliance Industries', symbol: 'RELIANCE', base_price: 1222, lower_circuit: 1104, upper_circuit: 1348 },
+    { name: 'State Bank of India', symbol: 'SBIN', base_price: 981, lower_circuit: 885, upper_circuit: 1080 },
+    { name: 'Sun Pharma', symbol: 'SUNPHARMA', base_price: 1842, lower_circuit: 1669, upper_circuit: 2038 },
+    { name: 'Tata Consultancy Services', symbol: 'TCS', base_price: 2076, lower_circuit: 1876, upper_circuit: 2292 },
+    { name: 'Tata Steel', symbol: 'TATASTEEL', base_price: 187, lower_circuit: 169, upper_circuit: 206 },
+    { name: 'Tech Mahindra', symbol: 'TECHM', base_price: 1537, lower_circuit: 1393, upper_circuit: 1701 },
+    { name: 'Titan Company', symbol: 'TITAN', base_price: 4886, lower_circuit: 4391, upper_circuit: 5366 },
+    { name: 'Trent', symbol: 'TRENT', base_price: 2665, lower_circuit: 2400, upper_circuit: 2932 },
+    { name: 'UltraTech Cement', symbol: 'ULTRACEMCO', base_price: 11160, lower_circuit: 9990, upper_circuit: 12210 }
   ];
 
   let targetEventId = specificEventId;
+  let targetEventStatus = 'NOT_STARTED';
   if (!targetEventId) {
-    const existingEvent = await runner.query(`SELECT id FROM events ORDER BY id ASC LIMIT 1`);
+    const existingEvent = await runner.query(`SELECT id, status FROM events ORDER BY id ASC LIMIT 1`);
     if (existingEvent.rows.length === 0) return;
     targetEventId = existingEvent.rows[0].id;
+    targetEventStatus = existingEvent.rows[0].status;
+  } else {
+    const existingEvent = await runner.query(`SELECT status FROM events WHERE id = $1`, [targetEventId]);
+    if (existingEvent.rows.length > 0) {
+      targetEventStatus = existingEvent.rows[0].status;
+    }
   }
 
   const currentSecurities = await runner.query(`SELECT id, symbol FROM securities WHERE event_id = $1`, [targetEventId]);
@@ -144,11 +151,21 @@ export async function migrateSecurities(specificEventId?: number, client?: PoolC
     const existing = await runner.query(`SELECT id, initial_ltp FROM securities WHERE event_id = $1 AND symbol = $2`, [targetEventId, data.symbol]);
     
     if (existing.rows.length > 0) {
-      await runner.query(`
-        UPDATE securities
-        SET name = $1, base_price = $2, lower_circuit = $3, upper_circuit = $4, updated_at = CURRENT_TIMESTAMP
-        WHERE event_id = $5 AND symbol = $6
-      `, [data.name, data.base_price, data.lower_circuit, data.upper_circuit, targetEventId, data.symbol]);
+      if (targetEventStatus === 'NOT_STARTED') {
+        // Safe to overwrite initial_ltp and current_ltp because market hasn't started
+        await runner.query(`
+          UPDATE securities
+          SET name = $1, base_price = $2, initial_ltp = $2, current_ltp = $2, lower_circuit = $3, upper_circuit = $4, updated_at = CURRENT_TIMESTAMP
+          WHERE event_id = $5 AND symbol = $6
+        `, [data.name, initLtp, data.lower_circuit, data.upper_circuit, targetEventId, data.symbol]);
+      } else {
+        // Market is live or ended, only update bounds and metadata
+        await runner.query(`
+          UPDATE securities
+          SET name = $1, base_price = $2, lower_circuit = $3, upper_circuit = $4, updated_at = CURRENT_TIMESTAMP
+          WHERE event_id = $5 AND symbol = $6
+        `, [data.name, data.base_price, data.lower_circuit, data.upper_circuit, targetEventId, data.symbol]);
+      }
 
       if (data.symbol === 'RELIANCE' && (existing.rows[0].initial_ltp === 100 || existing.rows[0].initial_ltp === 1234)) {
         await runner.query(`UPDATE securities SET initial_ltp = 988, current_ltp = 988 WHERE id = $1`, [existing.rows[0].id]);
@@ -173,7 +190,7 @@ export async function seedDefaultData(client?: PoolClient) {
 
   await migrateSecurities(eventId, runner);
 
-  const secs = await runner.query(`SELECT id, symbol FROM securities WHERE event_id = $1`, [eventId]);
+  const secs = await runner.query(`SELECT id, symbol, initial_ltp FROM securities WHERE event_id = $1`, [eventId]);
   const jobbers = ['JR01', 'JR02'];
   
   for (const jid of jobbers) {
@@ -188,7 +205,7 @@ export async function seedDefaultData(client?: PoolClient) {
       await runner.query(`
         INSERT INTO jobber_inventory (jobber_id, security_id, assigned_quantity, remaining_quantity, assigned_price)
         VALUES ($1, $2, $3, $4, $5)
-      `, [jobberId, sec.id, 100000, 100000, 100.0]);
+      `, [jobberId, sec.id, 100000, 100000, Number(sec.initial_ltp)]);
     }
   }
 

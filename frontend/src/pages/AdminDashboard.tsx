@@ -56,19 +56,19 @@ export const AdminDashboardPage: React.FC = () => {
     channel.bind('TRADE_EXECUTED', triggerRefresh);
     channel.bind('MARKET_STATUS_CHANGED', triggerRefresh);
     channel.bind('EVENT_RESET', triggerRefresh);
-    // Note: LTP_UPDATE is usually accompanied by TRADE_EXECUTED, but we can listen just in case
     channel.bind('LTP_UPDATE', triggerRefresh);
+    channel.bind('SECURITIES_UPDATED', triggerRefresh);
 
     return () => {
       channel.unbind('TRADE_EXECUTED', triggerRefresh);
       channel.unbind('MARKET_STATUS_CHANGED', triggerRefresh);
       channel.unbind('EVENT_RESET', triggerRefresh);
       channel.unbind('LTP_UPDATE', triggerRefresh);
+      channel.unbind('SECURITIES_UPDATED', triggerRefresh);
     };
   }, [channel]);
 
   const handleTradeSubmitted = () => {
-    // Also trigger local refresh immediately for responsiveness, though socket will catch it too
     setRefreshCount((prev) => prev + 1);
   };
 

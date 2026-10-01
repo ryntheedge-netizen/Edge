@@ -47,12 +47,31 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
     currency: 'INR',
   }).format(calculatedTotal);
 
+  const normalizeParticipantId = (val: string): string => {
+    let cleaned = val.trim();
+    if (/^\d+$/.test(cleaned)) {
+      const num = parseInt(cleaned, 10);
+      if (num >= 1 && num <= 99) return `TR${num.toString().padStart(2, '0')}`;
+    } else if (/^j\d+$/i.test(cleaned)) {
+      const num = parseInt(cleaned.substring(1), 10);
+      if (num >= 1 && num <= 99) return `JR${num.toString().padStart(2, '0')}`;
+    } else if (/^b\d+$/i.test(cleaned)) {
+      const num = parseInt(cleaned.substring(1), 10);
+      if (num >= 1 && num <= 99) return `BR${num.toString().padStart(2, '0')}`;
+    }
+    return cleaned.toUpperCase();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
 
-    const bId = buyerId.trim().toUpperCase();
-    const sId = sellerId.trim().toUpperCase();
+    const bId = normalizeParticipantId(buyerId);
+    const sId = normalizeParticipantId(sellerId);
+
+    // Update state to match normalized values so the user sees them
+    setBuyerId(bId);
+    setSellerId(sId);
 
     if (!bId || !sId) {
       showError('Buyer ID and Seller ID are required');
@@ -87,6 +106,14 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
     if (parsedQty <= 0 || parsedQty % 5 !== 0) {
       showError('Quantity must be a positive multiple of 5');
       return;
+    }
+
+    const selectedSec = securities.find(s => s.id.toString() === securityId);
+    if (selectedSec) {
+      if (parsedPrice < selectedSec.lower_circuit || parsedPrice > selectedSec.upper_circuit) {
+        showError(`Price is outside the allowed circuit range. Allowed Price: ₹${selectedSec.lower_circuit.toFixed(2)} - ₹${selectedSec.upper_circuit.toFixed(2)}`);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -197,6 +224,12 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
                 color: #fbbf24;
               }
             }
+            .security-dropdown {
+              color: #ffffff !important;
+            }
+            .security-dropdown option {
+              color: #000000 !important;
+            }
           `}
         </style>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -205,12 +238,12 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
             <input
               type="text"
               className="form-input font-mono verifier-input"
-              placeholder="e.g. TR01"
+              placeholder="e.g. 8 (-> TR08), J1 (-> JR01)"
               value={buyerId}
               onChange={(e) => setBuyerId(e.target.value.toUpperCase())}
+              onBlur={(e) => setBuyerId(normalizeParticipantId(e.target.value))}
               disabled={!isMarketLive || submitting}
               required
-              maxLength={4}
             />
           </div>
 
@@ -219,12 +252,12 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
             <input
               type="text"
               className="form-input font-mono verifier-input"
-              placeholder="e.g. TR02"
+              placeholder="e.g. 8 (-> TR08), J1 (-> JR01)"
               value={sellerId}
               onChange={(e) => setSellerId(e.target.value.toUpperCase())}
+              onBlur={(e) => setSellerId(normalizeParticipantId(e.target.value))}
               disabled={!isMarketLive || submitting}
               required
-              maxLength={4}
             />
           </div>
         </div>
@@ -232,7 +265,7 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
         <div className="form-group">
           <label className="form-label verifier-label">Security</label>
           <select
-            className="form-select font-mono verifier-input"
+            className="form-select font-mono verifier-input security-dropdown"
             value={securityId}
             onChange={(e) => setSecurityId(e.target.value)}
             disabled={!isMarketLive || submitting}

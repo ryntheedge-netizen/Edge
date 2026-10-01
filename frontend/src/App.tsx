@@ -3,17 +3,22 @@ import { SocketProvider } from './context/SocketContext';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PublicScreen } from './pages/PublicScreen';
-import { AdminDashboardPage } from './pages/AdminDashboard';
-import { SuperadminDashboardPage } from './pages/SuperadminDashboard';
 import { LoginPage } from './pages/LoginPage';
-import { EdgeDashboardPage } from './pages/EdgeDashboard';
 import { EdgeLayout } from './components/EdgeLayout';
-import { TraderPortfolioPage } from './pages/TraderPortfolioPage';
-import { AttendanceDashboardPage } from './pages/AttendanceDashboard';
-import { AttendanceScannerPage } from './pages/AttendanceScanner';
-import { QRBookPage } from './pages/QRBook';
-import { SuperadminMarketPage } from './pages/SuperadminMarketPage';
-import { SuperadminAuditLogsPage } from './pages/SuperadminAuditLogsPage';
+
+// Lazy loaded pages for performance code-splitting
+const AdminDashboardPage = React.lazy(() => import('./pages/AdminDashboard').then(module => ({ default: module.AdminDashboardPage })));
+const SuperadminDashboardPage = React.lazy(() => import('./pages/SuperadminDashboard').then(module => ({ default: module.SuperadminDashboardPage })));
+const EdgeDashboardPage = React.lazy(() => import('./pages/EdgeDashboard').then(module => ({ default: module.EdgeDashboardPage })));
+const TraderPortfolioPage = React.lazy(() => import('./pages/TraderPortfolioPage').then(module => ({ default: module.TraderPortfolioPage })));
+const AttendanceDashboardPage = React.lazy(() => import('./pages/AttendanceDashboard').then(module => ({ default: module.AttendanceDashboardPage })));
+const AttendanceScannerPage = React.lazy(() => import('./pages/AttendanceScanner').then(module => ({ default: module.AttendanceScannerPage })));
+const QRBookPage = React.lazy(() => import('./pages/QRBook').then(module => ({ default: module.QRBookPage })));
+const AttendanceAuditLogPage = React.lazy(() => import('./pages/AttendanceAuditLog').then(module => ({ default: module.AttendanceAuditLogPage })));
+const SuperadminMarketPage = React.lazy(() => import('./pages/SuperadminMarketPage').then(module => ({ default: module.SuperadminMarketPage })));
+const SuperadminAuditLogsPage = React.lazy(() => import('./pages/SuperadminAuditLogsPage').then(module => ({ default: module.SuperadminAuditLogsPage })));
+const QueueManagerPage = React.lazy(() => import('./pages/QueueManagerPage').then(module => ({ default: module.QueueManagerPage })));
+const QueueViewerPage = React.lazy(() => import('./pages/QueueViewerPage').then(module => ({ default: module.QueueViewerPage })));
 
 const MainApp: React.FC = () => {
   const { isAuthenticated, hasPermission } = useAuth();
@@ -31,12 +36,24 @@ const MainApp: React.FC = () => {
     return null;
   }
 
-  if (currentPath === '/login') {
-    return isAuthenticated ? <EdgeDashboardPage /> : <LoginPage title="EDGE PLATFORM LOGIN" />;
-  }
-
-  if (currentPath === '/dashboard') {
-    return <EdgeDashboardPage />;
+  if (currentPath === '/login' || currentPath === '/dashboard') {
+    if (isAuthenticated) {
+      if (hasPermission('EDGE_SUPERADMIN') || hasPermission('BULL_RING_SUPERADMIN') || hasPermission('BULL_RING_ADMIN')) {
+        return <EdgeDashboardPage />;
+      }
+      if (hasPermission('ATTENDANCE_ADMIN')) {
+        window.history.replaceState(null, '', '/attendance');
+        setCurrentPath('/attendance');
+        return null;
+      }
+      if (hasPermission('ATTENDANCE_VERIFIER')) {
+        window.history.replaceState(null, '', '/attendance/scanner');
+        setCurrentPath('/attendance/scanner');
+        return null;
+      }
+      return <EdgeDashboardPage />;
+    }
+    return <LoginPage title="EDGE PLATFORM LOGIN" />;
   }
 
   // Attendance Module Routes
@@ -57,6 +74,13 @@ const MainApp: React.FC = () => {
   if (currentPath === '/attendance/qr-book') {
     if (hasPermission('ATTENDANCE_ADMIN')) {
       return <QRBookPage />;
+    }
+    return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
+  }
+
+  if (currentPath === '/attendance/audit') {
+    if (hasPermission('ATTENDANCE_ADMIN')) {
+      return <AttendanceAuditLogPage />;
     }
     return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
   }
@@ -117,7 +141,21 @@ const MainApp: React.FC = () => {
     return <LoginPage title="PORTFOLIO LOGIN" expectedRole="admin" />;
   }
 
+  // Queue System Routes
+  if (currentPath === '/queue/admin') {
+    if (hasPermission('BULL_RING_ADMIN') || hasPermission('BULL_RING_SUPERADMIN')) {
+      return (
+        <EdgeLayout title="Queue Manager">
+          <QueueManagerPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="QUEUE ADMIN LOGIN" expectedRole="admin" />;
+  }
 
+  if (currentPath === '/queue/viewer' || currentPath === '/queue') {
+    return <QueueViewerPage />;
+  }
 
   // Other specific modules placeholders
   if (currentPath === '/betting' || currentPath === '/betting/admin') {
@@ -148,7 +186,9 @@ export function App() {
     <SocketProvider>
       <ToastProvider>
         <AuthProvider>
-          <MainApp />
+          <React.Suspense fallback={<div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>Loading...</div>}>
+            <MainApp />
+          </React.Suspense>
         </AuthProvider>
       </ToastProvider>
     </SocketProvider>

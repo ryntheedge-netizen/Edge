@@ -57,12 +57,15 @@ export const SecurityRow: React.FC<SecurityRowProps> = ({ security, isMarketLive
       <td className="col-symbol">
         <span className="symbol-text">{security.symbol}</span>
       </td>
-      <td className={`col-ltp ${colorClass}`}>{formattedLtp}</td>
+      <td className="col-circuit col-low text-muted"><span className="mobile-label">LOW </span>{formattedLc}</td>
+      <td className="col-circuit col-open text-muted">
+        <span className="mobile-label">OPEN </span>{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(security.initial_ltp)}
+      </td>
+      <td className="col-circuit col-high text-muted"><span className="mobile-label">HIGH </span>{formattedUc}</td>
+      <td className={`col-ltp ${colorClass}`}><span className="mobile-label">LTP </span>{formattedLtp}</td>
       <td className={`col-pct ${colorClass}`}>
         {isUp ? '▲' : isDown ? '▼' : '■'} {isUp ? `+${pctChange.toFixed(2)}%` : isDown ? `${pctChange.toFixed(2)}%` : '0.00%'}
       </td>
-      <td className="col-circuit text-muted">{formattedLc}</td>
-      <td className="col-circuit text-muted">{formattedUc}</td>
     </tr>
   );
 };

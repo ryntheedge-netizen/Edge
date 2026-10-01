@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { EdgeLayout } from '../components/EdgeLayout';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, XCircle, AlertCircle, Search, Clock, Users, ArrowLeft, Square, Activity } from 'lucide-react';
@@ -46,9 +46,27 @@ export const AttendanceScannerPage: React.FC = () => {
 
   // Scanner state
   const [scanResult, setScanResult] = useState<ScanRecord | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [scannerState, setScannerState] = useState<'IDLE' | 'STARTING' | 'ACTIVE' | 'ERROR'>('IDLE');
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const lastScannedRef = useRef<{ id: string, time: number } | null>(null);
+  const isProcessingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  // Sync selectedStation to ref for use in scanner callback
+  const selectedStationRef = useRef<Station | null>(null);
+  useEffect(() => {
+    selectedStationRef.current = selectedStation;
+  }, [selectedStation]);
+  
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      stopScanner();
+    };
+  }, []);
 
   const fetchStations = () => {
     fetch('/api/attendance/stations', { headers: { Authorization: `Bearer ${token}` } })
@@ -126,54 +144,103 @@ export const AttendanceScannerPage: React.FC = () => {
     }
   };
 
-  // Init Scanner
+  const stopScanner = async () => {
+    if (scannerRef.current) {
+      const instance = scannerRef.current;
+      scannerRef.current = null;
+      try {
+        if (instance.isScanning) {
+          cleanupPromiseRef.current = instance.stop();
+          await cleanupPromiseRef.current;
+        }
+        instance.clear();
+      } catch (err) {
+        console.error("Error stopping scanner", err);
+      } finally {
+        cleanupPromiseRef.current = null;
+      }
+    }
+    if (mountedRef.current) {
+      setScannerState('IDLE');
+    }
+  };
+
+  const startScanner = async () => {
+    if (scannerState === 'STARTING' || scannerState === 'ACTIVE') return;
+    setScannerState('STARTING');
+    setScannerError(null);
+    
+    if (cleanupPromiseRef.current) {
+      await cleanupPromiseRef.current;
+    }
+    
+    try {
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode("qr-reader");
+      }
+      
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          const now = Date.now();
+          if (lastScannedRef.current && lastScannedRef.current.id === decodedText && (now - lastScannedRef.current.time) < 4000) {
+            return;
+          }
+          if (isProcessingRef.current) return;
+
+          lastScannedRef.current = { id: decodedText, time: now };
+          isProcessingRef.current = true;
+          
+          processScan(decodedText, 'QR').finally(() => {
+            isProcessingRef.current = false;
+          });
+        },
+        () => {} // Ignore frame errors
+      );
+      
+      if (mountedRef.current) {
+        setScannerState('ACTIVE');
+      }
+    } catch (err: any) {
+      console.error("Camera Initialization Error:", err);
+      if (scannerRef.current) {
+        scannerRef.current.clear();
+        scannerRef.current = null;
+      }
+      if (mountedRef.current) {
+        const errorMsg = typeof err === 'string' ? err : err.message || 'Unknown camera error';
+        
+        let friendlyMsg = "Could not start camera.";
+        if (errorMsg.includes('NotReadableError') || errorMsg.includes('track')) {
+          friendlyMsg = "Camera is already in use by another application or tab. Please close other camera apps and retry.";
+        } else if (errorMsg.includes('NotAllowedError') || errorMsg.includes('Permission')) {
+          friendlyMsg = "Camera access was denied. Please grant permission in your browser settings.";
+        } else if (errorMsg.includes('NotFoundError')) {
+          friendlyMsg = "No camera device found on this device.";
+        }
+        
+        setScannerError(`${friendlyMsg} (${errorMsg})`);
+        setScannerState('ERROR');
+      }
+    }
+  };
+
+  // Stop scanner automatically when switching modes or station stops
   useEffect(() => {
     if (!selectedStation || manualMode || selectedStation.status !== 'ACTIVE') {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-        scannerRef.current = null;
-      }
-      return;
+      stopScanner();
     }
-
-    const onScanSuccess = async (decodedText: string) => {
-      const now = Date.now();
-      // Client duplicate suppression (5 seconds)
-      if (lastScannedRef.current && lastScannedRef.current.id === decodedText && (now - lastScannedRef.current.time) < 5000) {
-        return;
-      }
-      if (isProcessing) return;
-
-      lastScannedRef.current = { id: decodedText, time: now };
-      setIsProcessing(true);
-      processScan(decodedText, 'QR');
-    };
-
-    if (!scannerRef.current) {
-      scannerRef.current = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: { width: 250, height: 250 }, disableFlip: false },
-        false
-      );
-      scannerRef.current.render(onScanSuccess, () => {});
-    }
-
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-        scannerRef.current = null;
-      }
-    };
-  }, [selectedStation, manualMode, isProcessing]);
+  }, [selectedStation, manualMode]);
 
   const processScan = async (participantId: string, method: 'QR' | 'MANUAL') => {
-    if (!selectedStation) return;
-    if (selectedStation.status !== 'ACTIVE') {
+    const station = selectedStationRef.current;
+    if (!station) return;
+    if (station.status !== 'ACTIVE') {
        const msg = 'Scanning is currently stopped for this station.';
        setScanResult({ status: 'error', participantId, participantName: 'Station Stopped', teamName: '-', time: new Date().toLocaleTimeString(), message: msg });
        showError(msg);
-       setTimeout(() => setScanResult(null), 3000);
-       setIsProcessing(false);
+       setTimeout(() => { if (mountedRef.current) setScanResult(null); }, 3000);
        return;
     }
 
@@ -181,7 +248,7 @@ export const AttendanceScannerPage: React.FC = () => {
       const res = await fetch('/api/attendance/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ participant_id: participantId, station_id: selectedStation.id, method })
+        body: JSON.stringify({ participant_id: participantId, station_id: station.id, method })
       });
       if (res.status === 401) { logout(); return; }
       
@@ -217,9 +284,7 @@ export const AttendanceScannerPage: React.FC = () => {
       const msg = 'Failed to connect to server';
       setScanResult({ status: 'error', participantId, participantName: 'Network Error', teamName: '-', time: new Date().toLocaleTimeString(), message: msg });
       showError(msg);
-      setTimeout(() => setScanResult(null), 3000);
-    } finally {
-      setTimeout(() => setIsProcessing(false), 500);
+      setTimeout(() => { if (mountedRef.current) setScanResult(null); }, 3000);
     }
   };
 
@@ -360,7 +425,36 @@ export const AttendanceScannerPage: React.FC = () => {
                   <h3 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Activity size={18} color="#10b981" /> SCAN QR</h3>
                   <button onClick={() => setManualMode(true)} className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '0.25rem 0.75rem' }}>Enter Participant ID</button>
                 </div>
-                <div id="qr-reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000' }}></div>
+                
+                {scannerState === 'IDLE' && (
+                  <div style={{ padding: '3rem 2rem', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Click below to initialize the camera and begin scanning.</p>
+                    <button onClick={startScanner} className="btn btn-primary" style={{ padding: '0.75rem 2rem' }}>Start Scanning</button>
+                  </div>
+                )}
+                
+                {scannerState === 'STARTING' && (
+                  <div style={{ padding: '3rem 2rem', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '8px', color: 'var(--text-muted)' }}>
+                    Initializing camera... Please allow permissions if prompted.
+                  </div>
+                )}
+                
+                {scannerState === 'ERROR' && (
+                  <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '8px' }}>
+                    <AlertCircle size={32} color="#ef4444" style={{ marginBottom: '1rem' }} />
+                    <h4 style={{ color: '#ef4444', margin: '0 0 0.5rem 0' }}>Camera Error</h4>
+                    <p style={{ color: '#ffb3b3', fontSize: '0.9rem', marginBottom: '1.5rem' }}>{scannerError}</p>
+                    <button onClick={startScanner} className="btn btn-primary" style={{ backgroundColor: '#ef4444' }}>Retry Camera</button>
+                  </div>
+                )}
+
+                <div id="qr-reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: (scannerState === 'ACTIVE' || scannerState === 'STARTING') ? 'block' : 'none' }}></div>
+                
+                {scannerState === 'ACTIVE' && (
+                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                    <button onClick={stopScanner} className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444', padding: '0.4rem 1rem', fontSize: '0.8rem' }}>Stop Camera</button>
+                  </div>
+                )}
               </>
             ) : (
               <div>

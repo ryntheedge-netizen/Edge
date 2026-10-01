@@ -144,6 +144,9 @@ export const AttendanceDashboardPage: React.FC = () => {
           <button onClick={() => navigate('/attendance/qr-book')} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <BookOpen size={18} /> QR Book
           </button>
+          <button onClick={() => navigate('/attendance/audit')} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+            <BarChart size={18} /> Audit Log
+          </button>
         </div>
 
         {!data ? (
