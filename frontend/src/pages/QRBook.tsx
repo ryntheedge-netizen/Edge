@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import QRCode from 'react-qr-code';
 import * as XLSX from 'xlsx';
 import { Upload, AlertCircle, FileUp, Download, Undo2, Trash2, Settings, X, Check } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
+import { jsPDF } from 'jspdf';
+import QRCodeGenerator from 'qrcode';
 
 export const QRBookPage: React.FC = () => {
   const { token, logout, hasPermission } = useAuth();
@@ -58,7 +59,7 @@ export const QRBookPage: React.FC = () => {
     fetchTemplate();
   }, [token]);
 
-  const handleDownload = () => {
+  const handleGeneratePdf = async (isSample = false) => {
     if (!template) {
       alert("Please upload and configure an ID Template first.");
       return;
@@ -66,30 +67,112 @@ export const QRBookPage: React.FC = () => {
     
     setIsGeneratingPdf(true);
     
-    // Give react time to render the hidden print container
-    setTimeout(() => {
-      const container = document.getElementById('pdf-print-container');
-      if (!container) {
+    try {
+      let participants: any[] = [];
+      Object.keys(groupedData).forEach(teamName => {
+        groupedData[teamName].participants.forEach((p: any) => {
+          participants.push({ ...p, teamName: teamName !== 'Unassigned' ? teamName : '-' });
+        });
+      });
+
+      if (participants.length === 0) {
+        alert("No participants found.");
         setIsGeneratingPdf(false);
         return;
       }
-      
-      // Calculate exact aspect ratio dynamically based on the first rendered card
-      const firstCard = container.firstElementChild as HTMLElement;
-      const cardHeight = firstCard ? firstCard.offsetHeight : 1131;
-      
-      const opt = {
-        margin:       0,
-        filename:     'EDGE_QR_Book.pdf',
-        image:        { type: 'jpeg' as const, quality: 1 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'px' as const, format: [800, cardHeight] as [number, number], orientation: 'portrait' as const }
-      };
 
-      html2pdf().set(opt).from(container).save().then(() => {
-        setIsGeneratingPdf(false);
+      if (isSample) {
+        // Find 1 short, 1 long name, 1 long team
+        const short = participants.find(p => p.name.length <= 10 && p.teamName.length <= 10) || participants[0];
+        const longName = participants.find(p => p.name.length > 20) || participants[1] || participants[0];
+        const longTeam = participants.find(p => p.teamName.length > 15) || participants[2] || participants[0];
+        
+        participants = Array.from(new Set([short, longName, longTeam]));
+      }
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
       });
-    }, 500);
+
+      const cardW = 63;
+      const cardH = 100;
+      const offsetX = 73.5;
+      const offsetY = 98.5;
+      
+      const b1 = template.config_data.box1;
+      const b2 = template.config_data.box2;
+
+      for (let i = 0; i < participants.length; i++) {
+        const p = participants[i];
+        
+        if (i > 0) doc.addPage();
+        
+        // Background
+        doc.addImage(template.image_data, 'JPEG', offsetX, offsetY, cardW, cardH);
+        
+        // Box 1 Layout
+        const b1X = offsetX + (cardW * b1.x / 100);
+        const b1Y = offsetY + (cardH * b1.y / 100);
+        const b1W = cardW * b1.w / 100;
+        const b1H = cardH * b1.h / 100;
+        
+        const qrDataUrl = await QRCodeGenerator.toDataURL(p.participant_id, {
+          errorCorrectionLevel: 'H',
+          margin: 1,
+          width: 300
+        });
+        
+        const qrSize = Math.min(b1W * 0.7, b1H * 0.55);
+        const qrX = b1X + (b1W - qrSize) / 2;
+        const qrY = b1Y;
+        
+        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+        
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(15);
+        
+        const nameLines = doc.splitTextToSize(p.name, b1W);
+        const nameY = qrY + qrSize + 6; // text is drawn from baseline
+        
+        // Fallback note: using Helvetica instead of Canva Sans as font files are not hosted locally.
+        doc.text(nameLines, b1X + b1W / 2, nameY, { align: 'center' });
+        
+        const nameHeight = nameLines.length * (15 * 0.3527 * 1.15);
+        
+        doc.setFontSize(15);
+        const idY = nameY + nameHeight;
+        doc.text(p.participant_id, b1X + b1W / 2, idY, { align: 'center' });
+        
+        // Box 2 Layout
+        const b2X = offsetX + (cardW * b2.x / 100);
+        const b2Y = offsetY + (cardH * b2.y / 100);
+        const b2W = cardW * b2.w / 100;
+        const b2H = cardH * b2.h / 100;
+        
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(14);
+        
+        const teamLines = doc.splitTextToSize(p.teamName, b2W);
+        const teamHeight = teamLines.length * (14 * 0.3527 * 1.15);
+        
+        const teamStartY = b2Y + (b2H - teamHeight) / 2 + (14 * 0.3527);
+        
+        // @ts-ignore: charSpace is supported in options but might not be typed fully
+        doc.text(teamLines, b2X + b2W / 2, teamStartY, { 
+          align: 'center', 
+          charSpace: 0.0987 
+        });
+      }
+      
+      doc.save(`EDGE_QR_Book_${isSample ? 'Sample' : 'Full'}.pdf`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to generate PDF');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,8 +422,11 @@ export const QRBookPage: React.FC = () => {
                 <Settings size={18} /> Configure ID Template
               </button>
             )}
-            <button onClick={handleDownload} disabled={isGeneratingPdf || !template} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Download size={18} /> {isGeneratingPdf ? 'Generating...' : 'Download QR Book'}
+            <button onClick={() => handleGeneratePdf(true)} disabled={isGeneratingPdf || !template} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderColor: '#10b981', color: '#10b981' }}>
+              <Download size={18} /> QA Sample
+            </button>
+            <button onClick={() => handleGeneratePdf(false)} disabled={isGeneratingPdf || !template} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Download size={18} /> {isGeneratingPdf ? 'Generating...' : 'Full QR Book'}
             </button>
           </div>
         </div>
