@@ -247,9 +247,11 @@ export const EdgeLayout: React.FC<EdgeLayoutProps> = ({ children, title }) => {
                 )}
               </div>
             )}
-            <a href="/bull-ring/screener" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3b82f6', textDecoration: 'none', fontSize: '0.85rem', padding: '0.4rem 0.8rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', fontWeight: 500 }}>
-              <Activity size={14} /> Public Display
-            </a>
+            {isBullRingMode && (
+              <a href="/bull-ring/screener" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3b82f6', textDecoration: 'none', fontSize: '0.85rem', padding: '0.4rem 0.8rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', fontWeight: 500 }}>
+                <Activity size={14} /> Public Display
+              </a>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem', borderLeft: '1px solid var(--border-color)', paddingLeft: '1rem' }}>
               <span className="hide-on-mobile">Logged in as:</span>
               <span style={{ color: 'var(--text-bright)', fontWeight: 600, padding: '0.25rem 0.5rem', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '4px' }}>

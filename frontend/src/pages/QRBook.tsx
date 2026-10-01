@@ -127,20 +127,44 @@ export const QRBookPage: React.FC = () => {
         const qrSize = Math.min(b1W * 0.65, b1H * 0.5);
         const qrX = b1X + (b1W - qrSize) / 2;
         
-        doc.setFont('Helvetica', 'normal');
-        doc.setFontSize(15);
+        const formatTitleCase = (str: string) => {
+          if (!str) return '';
+          return str.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
+        };
+        const formattedName = formatTitleCase(p.name);
+        const formattedTeam = formatTitleCase(p.teamName);
         
-        const nameLines = doc.splitTextToSize(p.name, b1W * 0.95);
-        const lineHeight15 = 15 * 0.3527 * 1.15;
-        const fontAscent15 = 15 * 0.3527; // Baseline offset
-        
-        const nameBlockHeight = nameLines.length * lineHeight15;
-        const idBlockHeight = lineHeight15;
+        let nameFontSize = 15;
+        let nameLines: string[] = [];
+        let nameBlockHeight = 0;
+        let idBlockHeight = 0;
+        let totalContentHeight = 0;
+        let fontAscent15 = 0;
         
         const gapQRName = 4;
         const gapNameID = 2;
         
-        const totalContentHeight = qrSize + gapQRName + nameBlockHeight + gapNameID + idBlockHeight;
+        while (nameFontSize >= 6) {
+          doc.setFont('Helvetica', 'normal');
+          doc.setFontSize(nameFontSize);
+          nameLines = doc.splitTextToSize(formattedName, b1W * 0.95);
+          
+          const lineHeight = nameFontSize * 0.3527 * 1.15;
+          fontAscent15 = nameFontSize * 0.3527; // Baseline offset
+          
+          nameBlockHeight = nameLines.length * lineHeight;
+          idBlockHeight = 15 * 0.3527 * 1.15; // keep ID fixed at 15
+          
+          totalContentHeight = qrSize + gapQRName + nameBlockHeight + gapNameID + idBlockHeight;
+          
+          const words = formattedName.split(' ');
+          const longestWordWidth = Math.max(...words.map((w: string) => doc.getTextWidth(w)));
+          
+          if (totalContentHeight <= b1H && longestWordWidth <= b1W * 0.95) {
+            break;
+          }
+          nameFontSize -= 0.5;
+        }
         const startY = b1Y + (b1H - totalContentHeight) / 2;
         
         // Draw QR
@@ -149,6 +173,9 @@ export const QRBookPage: React.FC = () => {
         // Draw Name
         const nameBaselineY = startY + qrSize + gapQRName + fontAscent15;
         doc.text(nameLines, b1X + b1W / 2, nameBaselineY, { align: 'center' });
+        
+        // Draw ID
+        doc.setFontSize(15);
         
         // Draw ID
         const idBaselineY = startY + qrSize + gapQRName + nameBlockHeight + gapNameID + fontAscent15;
@@ -161,12 +188,25 @@ export const QRBookPage: React.FC = () => {
         const b2H = cardH * b2.h / 100;
         
         doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(14);
+        let teamFontSize = 14;
+        let teamLines: string[] = [];
+        let teamHeight = 0;
         
-        const teamLines = doc.splitTextToSize(p.teamName, b2W);
-        const teamHeight = teamLines.length * (14 * 0.3527 * 1.15);
+        while (teamFontSize >= 6) {
+          doc.setFontSize(teamFontSize);
+          teamLines = doc.splitTextToSize(formattedTeam, b2W * 0.95);
+          teamHeight = teamLines.length * (teamFontSize * 0.3527 * 1.15);
+          
+          const words = formattedTeam.split(' ');
+          const longestWordWidth = Math.max(...words.map((w: string) => doc.getTextWidth(w)));
+          
+          if (teamHeight <= b2H * 0.95 && longestWordWidth <= b2W * 0.95) {
+            break;
+          }
+          teamFontSize -= 0.5;
+        }
         
-        const teamStartY = b2Y + (b2H - teamHeight) / 2 + (14 * 0.3527);
+        const teamStartY = b2Y + (b2H - teamHeight) / 2 + (teamFontSize * 0.3527);
         
         // @ts-ignore: charSpace is supported in options but might not be typed fully
         doc.text(teamLines, b2X + b2W / 2, teamStartY, { 
@@ -690,74 +730,7 @@ export const QRBookPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Hidden PDF Generator Container */}
-      {template && (
-        <div style={{ 
-          position: 'absolute', 
-          top: 0, 
-          left: 0, 
-          zIndex: -9999, 
-          opacity: isGeneratingPdf ? 1 : 0, 
-          pointerEvents: 'none',
-          visibility: isGeneratingPdf ? 'visible' : 'hidden'
-        }}>
-          <div id="pdf-print-container" style={{ width: '800px', backgroundColor: 'transparent' }}>
-            {Object.keys(groupedData).map(teamName => 
-              groupedData[teamName].participants.map((p: any) => (
-                <div key={p.participant_id} style={{
-                  position: 'relative',
-                  width: '800px',
-                  pageBreakAfter: 'always',
-                  overflow: 'hidden'
-                }}>
-                  <img src={template.image_data} alt="" style={{ width: '800px', height: 'auto', display: 'block' }} />
-                  {/* White Box 1 (Main Info) */}
-                  <div style={{
-                    position: 'absolute',
-                    left: `${template.config_data.box1.x}%`,
-                    top: `${template.config_data.box1.y}%`,
-                    width: `${template.config_data.box1.w}%`,
-                    height: `${template.config_data.box1.h}%`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: 'transparent',
-                    padding: '2%'
-                  }}>
-                    <div style={{ width: '60%', aspectRatio: '1/1', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff', padding: '4px' }}>
-                      <QRCode value={p.participant_id} style={{ width: '100%', height: '100%' }} level="H" />
-                    </div>
-                    <div style={{ marginTop: '10px', textAlign: 'center', width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#ffffff', padding: '4px' }}>
-                      <div style={{ fontSize: p.name.length > 20 ? '24px' : '32px', fontWeight: 'bold', color: '#000', lineHeight: 1.2, wordBreak: 'break-word', maxWidth: '95%' }}>{p.name}</div>
-                      <div style={{ fontSize: '20px', color: '#333', fontWeight: 600, marginTop: '4px' }}>{p.participant_id}</div>
-                    </div>
-                  </div>
-                  
-                  {/* White Box 2 (Team Name) */}
-                  <div style={{
-                    position: 'absolute',
-                    left: `${template.config_data.box2.x}%`,
-                    top: `${template.config_data.box2.y}%`,
-                    width: `${template.config_data.box2.w}%`,
-                    height: `${template.config_data.box2.h}%`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: 'transparent',
-                    padding: '2%',
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{ fontSize: teamName.length > 25 ? '20px' : '26px', fontWeight: 'bold', color: '#000', textAlign: 'center', wordBreak: 'break-word', width: '100%', backgroundColor: '#ffffff', padding: '4px' }}>
-                      {teamName}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+
 
       {/* Template Modal */}
       {isTemplateModalOpen && (

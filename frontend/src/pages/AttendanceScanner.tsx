@@ -448,7 +448,7 @@ export const AttendanceScannerPage: React.FC = () => {
                   </div>
                 )}
 
-                <div id="qr-reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: scannerState === 'ACTIVE' ? 'block' : 'none' }}></div>
+                <div id="qr-reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: (scannerState === 'ACTIVE' || scannerState === 'STARTING') ? 'block' : 'none' }}></div>
                 
                 {scannerState === 'ACTIVE' && (
                   <div style={{ marginTop: '1rem', textAlign: 'center' }}>
