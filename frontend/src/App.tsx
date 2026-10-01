@@ -14,8 +14,11 @@ const TraderPortfolioPage = React.lazy(() => import('./pages/TraderPortfolioPage
 const AttendanceDashboardPage = React.lazy(() => import('./pages/AttendanceDashboard').then(module => ({ default: module.AttendanceDashboardPage })));
 const AttendanceScannerPage = React.lazy(() => import('./pages/AttendanceScanner').then(module => ({ default: module.AttendanceScannerPage })));
 const QRBookPage = React.lazy(() => import('./pages/QRBook').then(module => ({ default: module.QRBookPage })));
+const AttendanceAuditLogPage = React.lazy(() => import('./pages/AttendanceAuditLog').then(module => ({ default: module.AttendanceAuditLogPage })));
 const SuperadminMarketPage = React.lazy(() => import('./pages/SuperadminMarketPage').then(module => ({ default: module.SuperadminMarketPage })));
 const SuperadminAuditLogsPage = React.lazy(() => import('./pages/SuperadminAuditLogsPage').then(module => ({ default: module.SuperadminAuditLogsPage })));
+const QueueManagerPage = React.lazy(() => import('./pages/QueueManagerPage').then(module => ({ default: module.QueueManagerPage })));
+const QueueViewerPage = React.lazy(() => import('./pages/QueueViewerPage').then(module => ({ default: module.QueueViewerPage })));
 
 const MainApp: React.FC = () => {
   const { isAuthenticated, hasPermission } = useAuth();
@@ -55,6 +58,13 @@ const MainApp: React.FC = () => {
   if (currentPath === '/attendance/qr-book') {
     if (hasPermission('ATTENDANCE_ADMIN')) {
       return <QRBookPage />;
+    }
+    return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
+  }
+
+  if (currentPath === '/attendance/audit') {
+    if (hasPermission('ATTENDANCE_ADMIN')) {
+      return <AttendanceAuditLogPage />;
     }
     return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
   }
@@ -115,7 +125,21 @@ const MainApp: React.FC = () => {
     return <LoginPage title="PORTFOLIO LOGIN" expectedRole="admin" />;
   }
 
+  // Queue System Routes
+  if (currentPath === '/queue/admin') {
+    if (hasPermission('BULL_RING_ADMIN') || hasPermission('BULL_RING_SUPERADMIN')) {
+      return (
+        <EdgeLayout title="Queue Manager">
+          <QueueManagerPage />
+        </EdgeLayout>
+      );
+    }
+    return <LoginPage title="QUEUE ADMIN LOGIN" expectedRole="admin" />;
+  }
 
+  if (currentPath === '/queue/viewer' || currentPath === '/queue') {
+    return <QueueViewerPage />;
+  }
 
   // Other specific modules placeholders
   if (currentPath === '/betting' || currentPath === '/betting/admin') {

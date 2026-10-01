@@ -468,7 +468,7 @@ router.get('/qr-book', authenticateAttendanceAdmin, async (req: Request, res: Re
           participants: []
         };
       }
-      p.events = participationsRes.rows.filter(ep => ep.participant_id === p.id).map(ep => ep.activity_name);
+      p.events = participationsRes.rows.filter(ep => String(ep.participant_id) === String(p.id)).map(ep => ep.activity_name);
       grouped[teamLabel].participants.push(p);
     }
 
@@ -882,6 +882,60 @@ router.get('/id-template', authenticateAttendanceAdmin, async (req: Request, res
     res.json({ success: true, template: t });
   } catch (err: any) {
     res.status(500).json({ success: false, message: "Failed to fetch template" });
+  }
+});
+
+router.get('/audit', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const recordsRes = await query(`
+      SELECT 
+        r.id,
+        r.timestamp,
+        p.participant_id,
+        p.name as participant_name,
+        p.contact,
+        t.team_code,
+        st.stage_type as attendance_category,
+        a.name as event_name,
+        st.day,
+        s.name as station,
+        'Present' as attendance_status,
+        r.attendance_method as action_type,
+        'Scanner' as marked_by,
+        'Recorded successfully' as audit_remarks
+      FROM attendance_records r
+      JOIN edge_participants p ON r.participant_id = p.id
+      LEFT JOIN edge_teams t ON p.team_id = t.id
+      JOIN attendance_stages st ON r.stage_id = st.id
+      LEFT JOIN attendance_stations s ON r.station_id = s.id
+      LEFT JOIN edge_activities a ON st.stage_type = 'EVENT' AND s.activity_id = a.id
+      ORDER BY r.timestamp DESC
+    `);
+    
+    // Also include logs from attendance_audit_logs if needed, but the requirement specifies 
+    // a table of attendance activity with specific columns.
+    
+    res.json({ success: true, logs: recordsRes.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to fetch audit logs" });
+  }
+});
+
+router.post('/end-day', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  const user = (req as any).user.username;
+  try {
+    await withTransaction(async (client: PoolClient) => {
+      // Lock active stations for the current day
+      await client.query(`UPDATE attendance_stations SET status = 'STOPPED' WHERE status = 'ACTIVE'`);
+      
+      // Log DAY_ENDED
+      await client.query(`INSERT INTO attendance_audit_logs (actor, action, metadata) VALUES ($1, $2, $3)`, [
+        user, 'DAY_ENDED', JSON.stringify({ timestamp: new Date().toISOString() })
+      ]);
+    });
+    res.json({ success: true, message: "Day ended successfully. Active stations stopped." });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: "Failed to end day" });
   }
 });
 

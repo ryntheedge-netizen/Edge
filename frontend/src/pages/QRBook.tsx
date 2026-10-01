@@ -119,7 +119,7 @@ export const QRBookPage: React.FC = () => {
           if (lower.includes('finance')) m.event_finance = c;
           if (lower.includes('brand')) m.event_brand = c;
           if (lower.includes('bull')) m.event_bull = c;
-          if (lower.includes('ai')) m.event_ai = c;
+          if (lower.includes('ai') && !lower.includes('email') && !lower.includes('domain') && !lower.includes('detail') && !lower.includes('paid')) m.event_ai = c;
         });
         setMapping(m);
         setImportStep(1);
