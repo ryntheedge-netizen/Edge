@@ -65,7 +65,7 @@ const MainApp: React.FC = () => {
   }
 
   if (currentPath === '/attendance/scanner') {
-    if (hasPermission('ATTENDANCE_VERIFIER')) {
+    if (hasPermission('ATTENDANCE_VERIFIER') || hasPermission('ATTENDANCE_ADMIN')) {
       return <AttendanceScannerPage />;
     }
     return <LoginPage title="SCANNER LOGIN" expectedRole="att_scanner" />;
