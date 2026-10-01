@@ -108,6 +108,14 @@ export const TradeEntryForm: React.FC<TradeEntryFormProps> = ({ securities, onTr
       return;
     }
 
+    const selectedSec = securities.find(s => s.id.toString() === securityId);
+    if (selectedSec) {
+      if (parsedPrice < selectedSec.lower_circuit || parsedPrice > selectedSec.upper_circuit) {
+        showError(`Price is outside the allowed circuit range. Allowed Price: ₹${selectedSec.lower_circuit.toFixed(2)} - ₹${selectedSec.upper_circuit.toFixed(2)}`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setFeedback(null);
 

@@ -10,7 +10,7 @@ import { useSocket } from '../context/SocketContext';
  * movement fields so cards display the correct % change badge.
  */
 function enrichSecurity(raw: Security, existing?: Security): Security {
-  const initialLtp = existing?.initial_ltp ?? raw.initial_ltp;
+  const initialLtp = raw.initial_ltp;
   const currentLtp = raw.current_ltp;
   const absChange = Number((currentLtp - initialLtp).toFixed(2));
   const pctChange =

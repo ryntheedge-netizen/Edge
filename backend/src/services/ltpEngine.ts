@@ -154,12 +154,6 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     security.accumulated_trade_value = Number(security.accumulated_trade_value);
     security.threshold_amount = Number(security.threshold_amount);
 
-    const minPrice = security.lower_circuit;
-    const maxPrice = security.upper_circuit;
-    if (input.price < minPrice || input.price > maxPrice) {
-      throw new Error(`Trade rejected: Price ₹${input.price} is outside the allowed circuit range (LC: ₹${minPrice.toFixed(2)} - UC: ₹${maxPrice.toFixed(2)}).`);
-    }
-
     const idRegex = /^[tbj]r\d{2}$/i;
     buyerId = buyerId.toUpperCase();
     sellerId = sellerId.toUpperCase();
@@ -184,6 +178,12 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     }
     if (input.quantity <= 0 || input.quantity % 5 !== 0 || input.quantity > 100000000) {
       insertScrap(`Trade rejected: Quantity must be a positive multiple of 5.`);
+    }
+
+    const minPrice = security.lower_circuit;
+    const maxPrice = security.upper_circuit;
+    if (input.price < minPrice || input.price > maxPrice) {
+      insertScrap(`Trade rejected: Price ₹${input.price} is outside the allowed circuit range (LC: ₹${minPrice.toFixed(2)} - UC: ₹${maxPrice.toFixed(2)}).`);
     }
 
     // 3. Helper to distinguish Jobber vs Trader
