@@ -37,7 +37,23 @@ const MainApp: React.FC = () => {
   }
 
   if (currentPath === '/login' || currentPath === '/dashboard') {
-    return isAuthenticated ? <EdgeDashboardPage /> : <LoginPage title="EDGE PLATFORM LOGIN" />;
+    if (isAuthenticated) {
+      if (hasPermission('EDGE_SUPERADMIN') || hasPermission('BULL_RING_SUPERADMIN') || hasPermission('BULL_RING_ADMIN')) {
+        return <EdgeDashboardPage />;
+      }
+      if (hasPermission('ATTENDANCE_ADMIN')) {
+        window.history.replaceState(null, '', '/attendance');
+        setCurrentPath('/attendance');
+        return null;
+      }
+      if (hasPermission('ATTENDANCE_VERIFIER')) {
+        window.history.replaceState(null, '', '/attendance/scanner');
+        setCurrentPath('/attendance/scanner');
+        return null;
+      }
+      return <EdgeDashboardPage />;
+    }
+    return <LoginPage title="EDGE PLATFORM LOGIN" />;
   }
 
   // Attendance Module Routes

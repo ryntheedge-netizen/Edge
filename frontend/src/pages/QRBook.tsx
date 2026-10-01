@@ -124,28 +124,37 @@ export const QRBookPage: React.FC = () => {
           width: 300
         });
         
-        const qrSize = Math.min(b1W * 0.7, b1H * 0.55);
+        const qrSize = Math.min(b1W * 0.65, b1H * 0.5);
         const qrX = b1X + (b1W - qrSize) / 2;
-        const qrY = b1Y;
-        
-        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
         
         doc.setFont('Helvetica', 'normal');
         doc.setFontSize(15);
         
-        const nameLines = doc.splitTextToSize(p.name, b1W);
-        const nameY = qrY + qrSize + 6; // text is drawn from baseline
+        const nameLines = doc.splitTextToSize(p.name, b1W * 0.95);
+        const lineHeight15 = 15 * 0.3527 * 1.15;
+        const fontAscent15 = 15 * 0.3527; // Baseline offset
         
-        // Fallback note: using Helvetica instead of Canva Sans as font files are not hosted locally.
-        doc.text(nameLines, b1X + b1W / 2, nameY, { align: 'center' });
+        const nameBlockHeight = nameLines.length * lineHeight15;
+        const idBlockHeight = lineHeight15;
         
-        const nameHeight = nameLines.length * (15 * 0.3527 * 1.15);
+        const gapQRName = 4;
+        const gapNameID = 2;
         
-        doc.setFontSize(15);
-        const idY = nameY + nameHeight;
-        doc.text(p.participant_id, b1X + b1W / 2, idY, { align: 'center' });
+        const totalContentHeight = qrSize + gapQRName + nameBlockHeight + gapNameID + idBlockHeight;
+        const startY = b1Y + (b1H - totalContentHeight) / 2;
         
-        // Box 2 Layout
+        // Draw QR
+        doc.addImage(qrDataUrl, 'PNG', qrX, startY, qrSize, qrSize);
+        
+        // Draw Name
+        const nameBaselineY = startY + qrSize + gapQRName + fontAscent15;
+        doc.text(nameLines, b1X + b1W / 2, nameBaselineY, { align: 'center' });
+        
+        // Draw ID
+        const idBaselineY = startY + qrSize + gapQRName + nameBlockHeight + gapNameID + fontAscent15;
+        doc.text(p.participant_id, b1X + b1W / 2, idBaselineY, { align: 'center' });
+        
+        // Box 2 Layout (Team Name)
         const b2X = offsetX + (cardW * b2.x / 100);
         const b2Y = offsetY + (cardH * b2.y / 100);
         const b2W = cardW * b2.w / 100;
