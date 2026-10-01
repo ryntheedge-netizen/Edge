@@ -289,24 +289,86 @@ router.post('/stage/:id/finalize', authenticateAttendanceAdmin, async (req: Requ
       if (stage.status === 'FINALIZED') throw new Error("Stage already finalized");
 
       let expected = 0;
+      let missingSql = '';
+      let missingParams: any[] = [];
+      
       if (stage.stage_type === 'GENERAL') {
         const expectedRes = await client.query(`SELECT COUNT(*) as count FROM edge_participants WHERE is_active = true`);
         expected = Number(expectedRes.rows[0].count);
+        
+        missingSql = `
+          SELECT p.id 
+          FROM edge_participants p
+          WHERE p.is_active = true
+          AND NOT EXISTS (SELECT 1 FROM attendance_records r WHERE r.participant_id = p.id AND r.stage_id = $1)
+          AND NOT EXISTS (
+            SELECT 1 FROM attendance_audit_logs al 
+            WHERE al.action = 'ABSENT_RECORD' 
+            AND (al.metadata::json->>'stage_id') = $2
+            AND (al.metadata::json->>'participant_id')::int = p.id
+          )
+        `;
+        missingParams = [id, id.toString()];
       } else {
         const stationRes = await client.query(`SELECT activity_id FROM attendance_stations WHERE stage_id = $1 LIMIT 1`, [id]);
         if (stationRes.rows.length > 0 && stationRes.rows[0].activity_id) {
+          const actId = stationRes.rows[0].activity_id;
           const eRes = await client.query(`
             SELECT COUNT(*) as count FROM edge_event_participations ep 
             JOIN edge_participants p ON ep.participant_id = p.id 
             WHERE ep.activity_id = $1 AND p.is_active = true
-          `, [stationRes.rows[0].activity_id]);
+          `, [actId]);
           expected = Number(eRes.rows[0].count);
+          
+          missingSql = `
+            SELECT p.id 
+            FROM edge_participants p
+            JOIN edge_event_participations ep ON p.id = ep.participant_id
+            WHERE p.is_active = true AND ep.activity_id = $1
+            AND NOT EXISTS (SELECT 1 FROM attendance_records r WHERE r.participant_id = p.id AND r.stage_id = $2)
+            AND NOT EXISTS (
+              SELECT 1 FROM attendance_audit_logs al 
+              WHERE al.action = 'ABSENT_RECORD' 
+              AND (al.metadata::json->>'stage_id') = $3
+              AND (al.metadata::json->>'participant_id')::int = p.id
+            )
+          `;
+          missingParams = [actId, id, id.toString()];
         }
       }
 
       const pRes = await client.query(`SELECT COUNT(*) as count FROM attendance_records WHERE stage_id = $1`, [id]);
       const present = Number(pRes.rows[0].count);
       const absent = expected - present;
+
+      // Insert auto-generated Absent records for audit logs idempotently
+      if (missingSql) {
+        const missingRes = await client.query(missingSql, missingParams);
+        const missingIds = missingRes.rows.map(r => r.id);
+        
+        if (missingIds.length > 0) {
+          // Chunk inserts to avoid exceeding parameter limits
+          const chunkSize = 1000;
+          for (let i = 0; i < missingIds.length; i += chunkSize) {
+            const chunk = missingIds.slice(i, i + chunkSize);
+            const values: string[] = [];
+            const queryParams: any[] = [user, 'ABSENT_RECORD'];
+            let paramIdx = 3;
+            
+            chunk.forEach((pid) => {
+              values.push(`($1, $2, $${paramIdx})`);
+              queryParams.push(JSON.stringify({ participant_id: pid, stage_id: Number(id) }));
+              paramIdx++;
+            });
+            
+            const insertSql = `
+              INSERT INTO attendance_audit_logs (actor, action, metadata)
+              VALUES ${values.join(', ')}
+            `;
+            await client.query(insertSql, queryParams);
+          }
+        }
+      }
 
       await client.query(`UPDATE attendance_stages SET status = 'FINALIZED' WHERE id = $1`, [id]);
       await client.query(`
@@ -909,11 +971,33 @@ router.get('/audit', authenticateAttendanceAdmin, async (req: Request, res: Resp
       JOIN attendance_stages st ON r.stage_id = st.id
       LEFT JOIN attendance_stations s ON r.station_id = s.id
       LEFT JOIN edge_activities a ON st.stage_type = 'EVENT' AND s.activity_id = a.id
-      ORDER BY r.timestamp DESC
+      
+      UNION ALL
+      
+      SELECT 
+        al.id + 100000000 as id,
+        al.created_at as timestamp,
+        p.participant_id,
+        p.name as participant_name,
+        p.contact,
+        t.team_code,
+        st.stage_type as attendance_category,
+        a.name as event_name,
+        st.day,
+        (SELECT MIN(s2.name) FROM attendance_stations s2 WHERE s2.stage_id = st.id) as station,
+        'Absent' as attendance_status,
+        'SYSTEM' as action_type,
+        al.actor as marked_by,
+        'Auto-generated during End Day' as audit_remarks
+      FROM (SELECT * FROM attendance_audit_logs WHERE action = 'ABSENT_RECORD') al
+      JOIN edge_participants p ON p.id = (al.metadata::json->>'participant_id')::int
+      JOIN attendance_stages st ON st.id = (al.metadata::json->>'stage_id')::int
+      LEFT JOIN edge_teams t ON p.team_id = t.id
+      LEFT JOIN attendance_stations s ON s.stage_id = st.id
+      LEFT JOIN edge_activities a ON st.stage_type = 'EVENT' AND s.activity_id = a.id
+      
+      ORDER BY timestamp DESC
     `);
-    
-    // Also include logs from attendance_audit_logs if needed, but the requirement specifies 
-    // a table of attendance activity with specific columns.
     
     res.json({ success: true, logs: recordsRes.rows });
   } catch (err: any) {
