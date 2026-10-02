@@ -8,8 +8,8 @@ describe('Auction Module Core Tests', () => {
     // Make sure we have a clean state for testing if needed
     // But since this is a unit test style check on the running app, we'll create dummy data
     await pool.query(`INSERT INTO auction_traders (trader_id, starting_corpus) VALUES ('TR_TEST', 2000000) ON CONFLICT DO NOTHING`);
-    await pool.query(`INSERT INTO securities (event_id, name, symbol, base_price, initial_ltp, current_ltp, is_active) VALUES (1, 'Test Security', 'TEST01', 100, 100, 110, true) ON CONFLICT DO NOTHING`);
-    await pool.query(`INSERT INTO securities (event_id, name, symbol, base_price, initial_ltp, current_ltp, is_active) VALUES (1, 'Test Security Neg', 'TEST02', 100, 100, 90, true) ON CONFLICT DO NOTHING`);
+    await pool.query(`INSERT INTO auction_securities (code, name, return_pct) VALUES ('TEST01', 'Test Security', 10.00) ON CONFLICT DO NOTHING`);
+    await pool.query(`INSERT INTO auction_securities (code, name, return_pct) VALUES ('TEST02', 'Test Security Neg', -10.00) ON CONFLICT DO NOTHING`);
   });
 
   afterAll(async () => {
@@ -18,7 +18,8 @@ describe('Auction Module Core Tests', () => {
     await pool.query(`DELETE FROM auction_transfers WHERE from_trader_id = 'TR_TEST' OR to_trader_id = 'TR_TEST'`);
     await pool.query(`DELETE FROM auction_audit_logs WHERE trader_id = 'TR_TEST'`);
     await pool.query(`DELETE FROM auction_traders WHERE trader_id = 'TR_TEST'`);
-    await pool.query(`DELETE FROM securities WHERE symbol IN ('TEST01', 'TEST02')`);
+    await pool.query(`DELETE FROM auction_securities WHERE code IN ('TEST01', 'TEST02')`);
+    await pool.end();
   });
 
   it('Normalizes Trader IDs', () => {

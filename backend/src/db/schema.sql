@@ -289,6 +289,14 @@ CREATE TABLE IF NOT EXISTS edge_id_templates (
 -- AUCTION MODULE SCHEMA
 -- ==========================================
 
+CREATE TABLE IF NOT EXISTS auction_securities (
+    id SERIAL PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    return_pct NUMERIC(15,4) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS auction_traders (
     id SERIAL PRIMARY KEY,
     trader_id TEXT NOT NULL UNIQUE,
@@ -300,7 +308,7 @@ CREATE TABLE IF NOT EXISTS auction_bids (
     id SERIAL PRIMARY KEY,
     auction_round INTEGER NOT NULL CHECK(auction_round IN (1, 2)),
     trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
-    security_id INTEGER NOT NULL REFERENCES securities(id),
+    security_id INTEGER NOT NULL REFERENCES auction_securities(id),
     bid_amount NUMERIC(15,2) NOT NULL,
     envelope_id INTEGER DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'SUCCESS' CHECK(status IN ('SUCCESS', 'REJECTED')),
@@ -312,7 +320,7 @@ CREATE TABLE IF NOT EXISTS auction_holdings (
     id SERIAL PRIMARY KEY,
     auction_round INTEGER NOT NULL CHECK(auction_round IN (1, 2)),
     trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
-    security_id INTEGER NOT NULL REFERENCES securities(id),
+    security_id INTEGER NOT NULL REFERENCES auction_securities(id),
     acquisition_price NUMERIC(15,2) NOT NULL,
     envelope_id INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

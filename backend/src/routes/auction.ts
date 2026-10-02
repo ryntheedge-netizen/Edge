@@ -65,12 +65,11 @@ router.get('/traders', async (req, res) => {
           h.id as holding_id,
           h.acquisition_price,
           s.id as security_id,
-          s.symbol,
+          s.code as symbol,
           s.name,
-          s.base_price,
-          s.current_ltp
+          s.return_pct
         FROM auction_holdings h
-        JOIN securities s ON h.security_id = s.id
+        JOIN auction_securities s ON h.security_id = s.id
         WHERE h.trader_id = $1
       `, [traderId]);
 
@@ -82,10 +81,7 @@ router.get('/traders', async (req, res) => {
         totalPurchaseCost += acqPrice;
         
         // Calculate current value based on return
-        // Return % = (current_ltp - base_price) / base_price
-        const basePrice = Number(h.base_price);
-        const currentLtp = Number(h.current_ltp);
-        const returnPct = basePrice > 0 ? (currentLtp - basePrice) / basePrice : 0;
+        const returnPct = Number(h.return_pct) / 100;
         
         const currentValue = acqPrice + (acqPrice * returnPct);
         currentHoldingsValue += currentValue;
@@ -132,12 +128,11 @@ router.get('/traders/:id', async (req, res) => {
         h.acquisition_price,
         h.envelope_id,
         s.id as security_id,
-        s.symbol,
+        s.code as symbol,
         s.name,
-        s.base_price,
-        s.current_ltp
+        s.return_pct
       FROM auction_holdings h
-      JOIN securities s ON h.security_id = s.id
+      JOIN auction_securities s ON h.security_id = s.id
       WHERE h.trader_id = $1
       ORDER BY h.created_at DESC
     `, [traderId]);
@@ -150,9 +145,7 @@ router.get('/traders/:id', async (req, res) => {
       const acqPrice = Number(h.acquisition_price);
       totalPurchaseCost += acqPrice;
       
-      const basePrice = Number(h.base_price);
-      const currentLtp = Number(h.current_ltp);
-      const returnPct = basePrice > 0 ? (currentLtp - basePrice) / basePrice : 0;
+      const returnPct = Number(h.return_pct) / 100;
       const currentValue = acqPrice + (acqPrice * returnPct);
       currentHoldingsValue += currentValue;
       
@@ -162,7 +155,7 @@ router.get('/traders/:id', async (req, res) => {
         securityCode: h.symbol,
         securityName: h.name,
         acquisitionPrice: acqPrice,
-        currentReturnPct: returnPct * 100,
+        currentReturnPct: Number(h.return_pct),
         currentValue: currentValue,
         gainLoss: currentValue - acqPrice,
         envelopeId: h.envelope_id
@@ -232,8 +225,8 @@ router.post('/bid', async (req, res) => {
       const startingCorpus = Number(traderRes.rows[0].starting_corpus);
 
       // Check security exists
-      // Using symbol as securityCode
-      const secRes = await client.query(`SELECT id FROM securities WHERE symbol = $1`, [securityCode]);
+      // Using code as securityCode
+      const secRes = await client.query(`SELECT id FROM auction_securities WHERE code = $1`, [securityCode]);
       if (secRes.rows.length === 0) {
         throw { status: 400, message: 'Security not found.' };
       }
@@ -397,13 +390,13 @@ router.get('/audit', async (req, res) => {
         l.actor as "auctioneer",
         l.action,
         l.trader_id as "traderId",
-        s.symbol as security,
+        s.code as security,
         l.bid_amount as "bidAmount",
         l.envelope_id as "envelopeId",
         l.auction_round as "round",
         l.details
       FROM auction_audit_logs l
-      LEFT JOIN securities s ON l.security_id = s.id
+      LEFT JOIN auction_securities s ON l.security_id = s.id
       ORDER BY l.created_at DESC
       LIMIT 1000
     `);
@@ -418,19 +411,16 @@ router.get('/audit', async (req, res) => {
 router.get('/securities', async (req, res) => {
   try {
     const secsRes = await pool.query(`
-      SELECT symbol as code, name, base_price, current_ltp
-      FROM securities
-      ORDER BY symbol ASC
+      SELECT code, name, return_pct
+      FROM auction_securities
+      ORDER BY LENGTH(code) ASC, code ASC
     `);
     
     const securities = secsRes.rows.map(s => {
-      const base = Number(s.base_price);
-      const cur = Number(s.current_ltp);
-      const retPct = base > 0 ? (cur - base) / base : 0;
       return {
         code: s.code,
         name: s.name,
-        returnPct: retPct * 100
+        returnPct: Number(s.return_pct)
       };
     });
     
@@ -438,6 +428,46 @@ router.get('/securities', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch securities.' });
+  }
+});
+
+// 8. Initialize Auction Traders
+router.post('/initialize', async (req, res) => {
+  try {
+    const { numTraders, startingCorpus } = req.body;
+    
+    if (!numTraders || numTraders <= 0 || !Number.isInteger(Number(numTraders))) {
+      return res.status(400).json({ error: 'Invalid number of traders' });
+    }
+    
+    if (!startingCorpus || startingCorpus <= 0) {
+      return res.status(400).json({ error: 'Invalid starting corpus' });
+    }
+
+    const existing = await pool.query('SELECT COUNT(*) FROM auction_traders');
+    if (Number(existing.rows[0].count) > 0) {
+      return res.status(400).json({ error: 'Auction is already initialized' });
+    }
+
+    await withTransaction(async (client) => {
+      for (let i = 1; i <= Number(numTraders); i++) {
+        const traderId = `TR${i.toString().padStart(2, '0')}`;
+        await client.query(
+          `INSERT INTO auction_traders (trader_id, starting_corpus) VALUES ($1, $2)`,
+          [traderId, Number(startingCorpus)]
+        );
+      }
+      
+      await client.query(`
+        INSERT INTO auction_audit_logs (actor, action, details)
+        VALUES ($1, $2, $3)
+      `, [(req as any).user.username, 'AUCTION_INITIALIZED', `Initialized ${numTraders} traders with ₹${startingCorpus}`]);
+    });
+
+    res.json({ success: true, message: 'Auction initialized successfully' });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to initialize auction' });
   }
 });
 
