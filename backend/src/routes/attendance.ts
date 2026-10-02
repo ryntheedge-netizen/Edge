@@ -1229,6 +1229,42 @@ router.post('/end-day', authenticateAttendanceAdmin, async (req: Request, res: R
   const user = (req as any).user.username;
   try {
     await withTransaction(async (client: PoolClient) => {
+      // Find all active stations/stages that are about to be stopped
+      const activeStagesRes = await client.query(`
+        SELECT DISTINCT st.id as stage_id, st.stage_type, s.activity_id 
+        FROM attendance_stations s
+        JOIN attendance_stages st ON s.stage_id = st.id
+        WHERE s.status = 'ACTIVE'
+      `);
+      
+      const activeStages = activeStagesRes.rows;
+
+      for (const stage of activeStages) {
+        // Generate ABSENT_RECORD in audit logs for eligible unscanned participants
+        await client.query(`
+          INSERT INTO attendance_audit_logs (actor, action, metadata)
+          SELECT $1, 'ABSENT_RECORD', json_build_object('participant_id', p.id, 'stage_id', $2::int)
+          FROM edge_participants p
+          LEFT JOIN edge_event_participations ep ON p.id = ep.participant_id
+          WHERE p.is_active = true
+          AND (
+            ($3::text = 'GENERAL')
+            OR 
+            ($3::text = 'EVENT' AND ep.activity_id = $4::int)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM attendance_records r
+            WHERE r.participant_id = p.id AND r.stage_id = $2::int
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM attendance_audit_logs al
+            WHERE al.action = 'ABSENT_RECORD' 
+            AND (al.metadata::json->>'participant_id')::int = p.id
+            AND (al.metadata::json->>'stage_id')::int = $2::int
+          )
+        `, [user, stage.stage_id, stage.stage_type, stage.activity_id || null]);
+      }
+
       // Lock active stations for the current day
       await client.query(`UPDATE attendance_stations SET status = 'STOPPED' WHERE status = 'ACTIVE'`);
       
@@ -1237,7 +1273,7 @@ router.post('/end-day', authenticateAttendanceAdmin, async (req: Request, res: R
         user, 'DAY_ENDED', JSON.stringify({ timestamp: new Date().toISOString() })
       ]);
     });
-    res.json({ success: true, message: "Day ended successfully. Active stations stopped." });
+    res.json({ success: true, message: "Day ended successfully. Absent records generated and active stations stopped." });
   } catch (err: any) {
     res.status(500).json({ success: false, message: "Failed to end day" });
   }

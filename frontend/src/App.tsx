@@ -45,7 +45,12 @@ const MainApp: React.FC = () => {
     return null;
   }
 
-  if (currentPath === '/login' || currentPath === '/dashboard') {
+  // Normalize path by stripping trailing slash
+  const normalizedPath = currentPath.endsWith('/') && currentPath.length > 1 
+    ? currentPath.slice(0, -1) 
+    : currentPath;
+
+  if (normalizedPath === '/login' || normalizedPath === '/dashboard') {
     if (isAuthenticated) {
       if (hasPermission('EDGE_SUPERADMIN') || hasPermission('BULL_RING_SUPERADMIN') || hasPermission('BULL_RING_ADMIN')) {
         return <EdgeDashboardPage />;
@@ -65,28 +70,28 @@ const MainApp: React.FC = () => {
   }
 
   // Attendance Module Routes
-  if (currentPath === '/attendance') {
+  if (normalizedPath === '/attendance') {
     if (hasPermission('ATTENDANCE_ADMIN')) {
       return <AttendanceDashboardPage />;
     }
     return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
   }
 
-  if (currentPath === '/attendance/scanner') {
+  if (normalizedPath === '/attendance/scanner') {
     if (hasPermission('ATTENDANCE_VERIFIER') || hasPermission('ATTENDANCE_ADMIN')) {
       return <AttendanceScannerPage />;
     }
     return <LoginPage title="SCANNER LOGIN" expectedRole="att_scanner" />;
   }
 
-  if (currentPath === '/attendance/qr-book') {
+  if (normalizedPath === '/attendance/qr-book') {
     if (hasPermission('ATTENDANCE_ADMIN')) {
       return <QRBookPage />;
     }
     return <LoginPage title="ATTENDANCE ADMIN LOGIN" expectedRole="att_admin" />;
   }
 
-  if (currentPath === '/attendance/audit') {
+  if (normalizedPath === '/attendance/audit') {
     if (hasPermission('ATTENDANCE_ADMIN')) {
       return <AttendanceAuditLogPage />;
     }
@@ -94,7 +99,7 @@ const MainApp: React.FC = () => {
   }
 
   // Bull Ring Admin Routes
-  if (currentPath === '/admin' || currentPath === '/bull-ring/admin') {
+  if (normalizedPath === '/admin' || normalizedPath === '/bull-ring/admin') {
     if (hasPermission('BULL_RING_ADMIN')) {
       return (
         <EdgeLayout title="Bull Ring Organizer">
@@ -105,7 +110,7 @@ const MainApp: React.FC = () => {
     return <LoginPage title="ORGANIZER LOGIN" expectedRole="admin" />;
   }
 
-  if (currentPath === '/superadmin' || currentPath === '/bull-ring/superadmin') {
+  if (normalizedPath === '/superadmin' || normalizedPath === '/bull-ring/superadmin') {
     if (hasPermission('BULL_RING_SUPERADMIN')) {
       return (
         <EdgeLayout title="Bull Ring Market">
@@ -116,7 +121,7 @@ const MainApp: React.FC = () => {
     return <LoginPage title="SUPERADMIN LOGIN" expectedRole="superadmin" />;
   }
 
-  if (currentPath === '/bull-ring/superadmin-controls') {
+  if (normalizedPath === '/bull-ring/superadmin-controls') {
     if (hasPermission('BULL_RING_SUPERADMIN')) {
       return (
         <EdgeLayout title="Bull Ring Controls">
@@ -127,7 +132,7 @@ const MainApp: React.FC = () => {
     return <LoginPage title="SUPERADMIN LOGIN" expectedRole="superadmin" />;
   }
 
-  if (currentPath === '/bull-ring/superadmin-audit') {
+  if (normalizedPath === '/bull-ring/superadmin-audit') {
     if (hasPermission('BULL_RING_SUPERADMIN')) {
       return (
         <EdgeLayout title="Trade Audit Log">
@@ -138,7 +143,7 @@ const MainApp: React.FC = () => {
     return <LoginPage title="SUPERADMIN LOGIN" expectedRole="superadmin" />;
   }
 
-  if (currentPath === '/bull-ring/portfolio') {
+  if (normalizedPath === '/bull-ring/portfolio') {
     if (hasPermission('BULL_RING_ADMIN') || hasPermission('BULL_RING_SUPERADMIN')) {
       return (
         <EdgeLayout title="Trader Portfolio">
@@ -150,7 +155,7 @@ const MainApp: React.FC = () => {
   }
 
   // Queue System Routes
-  if (currentPath === '/queue/admin') {
+  if (normalizedPath === '/queue/admin') {
     if (hasPermission('BULL_RING_ADMIN') || hasPermission('BULL_RING_SUPERADMIN')) {
       return (
         <EdgeLayout title="Queue Manager">
@@ -161,19 +166,19 @@ const MainApp: React.FC = () => {
     return <LoginPage title="QUEUE ADMIN LOGIN" expectedRole="admin" />;
   }
 
-  if (currentPath === '/queue/viewer' || currentPath === '/queue') {
+  if (normalizedPath === '/queue/viewer' || normalizedPath === '/queue') {
     return <QueueViewerPage />;
   }
 
   // Other specific modules placeholders
-  if (currentPath === '/betting' || currentPath === '/betting/admin') {
+  if (normalizedPath === '/betting' || normalizedPath === '/betting/admin') {
     if (hasPermission('BETTING_ADMIN')) {
       return <EdgeLayout title="Betting Admin"><div style={{padding: '2rem'}}>Betting Module (Coming Soon)</div></EdgeLayout>;
     }
     return <LoginPage title="BETTING ADMIN LOGIN" expectedRole="betting_admin" />;
   }
 
-  if (currentPath === '/auction' || currentPath === '/auction/admin') {
+  if (normalizedPath === '/auction' || normalizedPath === '/auction/admin') {
     if (hasPermission('AUCTION_ADMIN')) {
       return (
         <EdgeLayout title="Auction Admin">
@@ -185,7 +190,7 @@ const MainApp: React.FC = () => {
   }
 
   // Public Screener - Accessible to public without login, but can be viewed by anyone who visits /bull-ring/screener
-  if (currentPath === '/bull-ring' || currentPath === '/bull-ring/screener') {
+  if (normalizedPath === '/bull-ring' || normalizedPath === '/bull-ring/screener') {
     return <PublicScreen />;
   }
 
