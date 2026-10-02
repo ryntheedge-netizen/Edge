@@ -1,12 +1,21 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { EdgeLayout } from '../components/EdgeLayout';
 import { useAuth } from '../context/AuthContext';
-import { Users, QrCode, BarChart, UserX, Search, BookOpen, RotateCcw } from 'lucide-react';
+import { Users, QrCode, BarChart, UserX, Search, BookOpen, RotateCcw, FileSpreadsheet, CheckCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 export const AttendanceDashboardPage: React.FC = () => {
   const { token, logout } = useAuth();
   const [data, setData] = useState<any>(null);
   
+  const [viewTab, setViewTab] = useState<'DASHBOARD' | 'PROVISIONAL'>('DASHBOARD');
+
+  // Provisional State
+  const [provisionalData, setProvisionalData] = useState<any[]>([]);
+  const [provisionalSearch, setProvisionalSearch] = useState('');
+  const [reconcileModal, setReconcileModal] = useState<any>(null);
+  const [reconcileTarget, setReconcileTarget] = useState('');
+
   // Modals state
   const [absenteeModal, setAbsenteeModal] = useState<{ open: boolean, stageName: string, stageId: number, absentees: any[] }>({ open: false, stageName: '', stageId: 0, absentees: [] });
   const [absenteeSearch, setAbsenteeSearch] = useState('');
@@ -30,11 +39,66 @@ export const AttendanceDashboardPage: React.FC = () => {
       .catch(err => setData({ error: err.message }));
   };
 
+  const fetchProvisional = () => {
+    fetch('/api/attendance/provisional', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(d => {
+        if (d.provisional) setProvisionalData(d.provisional);
+      })
+      .catch(console.error);
+  };
+
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    fetchProvisional();
+    const interval = setInterval(() => {
+      fetchData();
+      if (viewTab === 'PROVISIONAL') fetchProvisional();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [token, logout]);
+  }, [token, logout, viewTab]);
+
+  const handleReconcile = async () => {
+    if (!reconcileTarget.trim()) return alert("Enter Permanent Participant ID");
+    try {
+      const res = await fetch(`/api/attendance/provisional/${reconcileModal.id}/reconcile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ permanent_participant_id: reconcileTarget.trim().toUpperCase() })
+      });
+      const result = await res.json();
+      if (res.ok) {
+        setReconcileModal(null);
+        setReconcileTarget('');
+        fetchProvisional();
+        fetchData();
+      } else {
+        alert(result.message);
+      }
+    } catch (err) {
+      alert("Failed to reconcile");
+    }
+  };
+
+  const exportProvisional = () => {
+    const ws = XLSX.utils.json_to_sheet(provisionalData.map(p => ({
+      'Reference': p.participant_id,
+      'Name': p.name,
+      'Contact': p.contact || '',
+      'Team Code': p.team_code || '',
+      'Status': p.registration_status,
+      'Event': p.event_name || 'General',
+      'Day': p.attendance_day || '',
+      'Station': p.station_name || '',
+      'Remarks': p.remarks || '',
+      'Created At': new Date(p.created_at).toLocaleString()
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Provisional Participants");
+    XLSX.writeFile(wb, `Provisional_Participants_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
 
   const handleRevertScan = async (id: number) => {
     if (!confirm('Are you sure you want to revert this scan?')) return;
@@ -149,13 +213,18 @@ export const AttendanceDashboardPage: React.FC = () => {
           </button>
         </div>
 
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+          <button onClick={() => setViewTab('DASHBOARD')} className={`btn ${viewTab === 'DASHBOARD' ? 'btn-primary' : 'btn-outline'}`}>Dashboard Overview</button>
+          <button onClick={() => setViewTab('PROVISIONAL')} className={`btn ${viewTab === 'PROVISIONAL' ? 'btn-primary' : 'btn-outline'}`}>Provisional Participants</button>
+        </div>
+
         {!data ? (
           <div style={{ color: 'var(--text-muted)' }}>Loading metrics...</div>
         ) : data.error ? (
           <div style={{ color: '#ef4444', padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>
             Error: {data.error}
           </div>
-        ) : (
+        ) : viewTab === 'DASHBOARD' ? (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
               <div className="panel-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -306,6 +375,72 @@ export const AttendanceDashboardPage: React.FC = () => {
 
             </div>
           </>
+        ) : (
+          <div className="panel-card" style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Users size={20} color="#f59e0b" /> Provisional Participants
+              </h3>
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <input type="text" placeholder="Search name, reference, contact..." value={provisionalSearch} onChange={e => setProvisionalSearch(e.target.value)} className="input-field" style={{ width: '250px' }} />
+                <button onClick={exportProvisional} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <FileSpreadsheet size={16} /> Export
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '0.75rem' }}>Reference</th>
+                    <th style={{ padding: '0.75rem' }}>Name & Contact</th>
+                    <th style={{ padding: '0.75rem' }}>Event / Station</th>
+                    <th style={{ padding: '0.75rem' }}>Status</th>
+                    <th style={{ padding: '0.75rem' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {provisionalData.filter(p => 
+                    (p.name || '').toLowerCase().includes(provisionalSearch.toLowerCase()) || 
+                    (p.participant_id || '').toLowerCase().includes(provisionalSearch.toLowerCase()) || 
+                    (p.contact || '').toLowerCase().includes(provisionalSearch.toLowerCase())
+                  ).map((p: any) => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '1rem 0.75rem', color: '#fff', fontWeight: 600 }}>{p.participant_id}</td>
+                      <td style={{ padding: '1rem 0.75rem' }}>
+                        <div style={{ color: '#fff' }}>{p.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.contact} {p.team_code ? `• ${p.team_code}` : ''}</div>
+                      </td>
+                      <td style={{ padding: '1rem 0.75rem' }}>
+                        <div style={{ color: '#fff', fontSize: '0.9rem' }}>{p.event_name || 'General Stage'}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.station_name} • {new Date(p.attendance_time).toLocaleTimeString()}</div>
+                      </td>
+                      <td style={{ padding: '1rem 0.75rem' }}>
+                        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: p.registration_status === 'RECONCILED' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: p.registration_status === 'RECONCILED' ? '#10b981' : '#f59e0b' }}>
+                          {p.registration_status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '1rem 0.75rem' }}>
+                        {p.registration_status === 'PROVISIONAL' ? (
+                          <button onClick={() => setReconcileModal(p)} className="btn btn-outline" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}>Reconcile</button>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <CheckCircle size={14} color="#10b981" /> Reconciled
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {provisionalData.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No provisional participants found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {/* Absentee Modal */}
@@ -349,6 +484,41 @@ export const AttendanceDashboardPage: React.FC = () => {
                     </tbody>
                   </table>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reconcile Modal */}
+        {reconcileModal && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+            <div className="panel-card" style={{ width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', padding: '1.5rem' }}>
+              <h3 style={{ margin: '0 0 1rem 0', color: '#fff' }}>Reconcile Provisional Participant</h3>
+              
+              <div style={{ padding: '1rem', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', marginBottom: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Provisional Reference: <strong style={{ color: '#fff' }}>{reconcileModal.participant_id}</strong><br/>
+                Name: <strong style={{ color: '#fff' }}>{reconcileModal.name}</strong><br/>
+                Contact: <strong style={{ color: '#fff' }}>{reconcileModal.contact}</strong>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Link to Permanent Participant ID *</label>
+                <input 
+                  type="text" 
+                  value={reconcileTarget} 
+                  onChange={e => setReconcileTarget(e.target.value.toUpperCase())} 
+                  className="input-field" 
+                  placeholder="e.g. EDG26-001" 
+                  required
+                />
+                <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '0.5rem' }}>
+                  Warning: This action will permanently merge the attendance records and deactivate the provisional identity.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button onClick={() => { setReconcileModal(null); setReconcileTarget(''); }} className="btn btn-outline">Cancel</button>
+                <button onClick={handleReconcile} className="btn btn-primary" disabled={!reconcileTarget.trim()}>Confirm Reconciliation</button>
               </div>
             </div>
           </div>

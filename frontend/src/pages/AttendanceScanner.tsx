@@ -39,10 +39,17 @@ export const AttendanceScannerPage: React.FC = () => {
   
   // Manual Entry state
   const [manualMode, setManualMode] = useState(false);
+  const [manualTab, setManualTab] = useState<'EXISTING' | 'PROVISIONAL'>('EXISTING');
   const [manualId, setManualId] = useState('');
   const [manualResult, setManualResult] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  
+  // Provisional Form State
+  const [provForm, setProvForm] = useState({
+    name: '', contact: '', teamName: '', remarks: '', activityId: '', force: false
+  });
+  const [provWarnings, setProvWarnings] = useState<any[]>([]);
 
   // Scanner state
   const [scanResult, setScanResult] = useState<ScanRecord | null>(null);
@@ -327,6 +334,63 @@ export const AttendanceScannerPage: React.FC = () => {
     }
   };
 
+  const handleProvisionalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStationRef.current) return;
+    setIsSearching(true);
+    setProvWarnings([]);
+    try {
+      const res = await fetch('/api/attendance/scan/provisional', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ 
+          station_id: selectedStationRef.current.id,
+          name: provForm.name,
+          contact: provForm.contact,
+          teamName: provForm.teamName,
+          remarks: provForm.remarks,
+          activity_id: selectedStationRef.current.stage_type === 'GENERAL' ? provForm.activityId : undefined,
+          force: provForm.force
+        })
+      });
+      if (res.status === 401) { logout(); return; }
+      const data = await res.json();
+      
+      if (!res.ok && data.warnings) {
+        setProvWarnings(data.warnings);
+        setIsSearching(false);
+        return;
+      }
+
+      if (!res.ok) {
+        showError(data.message || "Failed to create provisional attendance.");
+        setIsSearching(false);
+        return;
+      }
+
+      const time = new Date().toLocaleTimeString();
+      const rec: ScanRecord = {
+        participantId: data.data.participant_id,
+        participantName: data.data.name,
+        teamName: data.data.teamName || 'Provisional',
+        time,
+        status: 'success'
+      };
+      
+      setScanResult(rec);
+      setStats(s => ({ ...s, present: s.present + 1 }));
+      setRecentScans(prev => [rec, ...prev].slice(0, 10));
+      setLastScanTime(time);
+      
+      setManualMode(false);
+      setProvForm({ name: '', contact: '', teamName: '', remarks: '', activityId: '', force: false });
+    } catch (err) {
+      showError("Network Error");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   if (!selectedStation) {
     return (
       <EdgeLayout title="Attendance Scanner">
@@ -479,54 +543,116 @@ export const AttendanceScannerPage: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h3 style={{ margin: 0, color: '#fff' }}>Manual Attendance</h3>
-                  <button onClick={() => { setManualMode(false); setManualResult(null); setShowConfirm(false); }} className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '0.25rem 0.75rem' }}>Back to Scanner</button>
+                  <button onClick={() => { setManualMode(false); setManualResult(null); setShowConfirm(false); setProvWarnings([]); }} className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '0.25rem 0.75rem' }}>Back to Scanner</button>
                 </div>
                 
-                <form onSubmit={handleManualSearch} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                  <input type="text" value={manualId} onChange={e => setManualId(e.target.value.toUpperCase())} placeholder="e.g. EDG26-001" className="input-field" style={{ flex: 1 }} />
-                  <button type="submit" className="btn btn-primary" disabled={isSearching}><Search size={18} /></button>
-                </form>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                  <button onClick={() => setManualTab('EXISTING')} className={`btn ${manualTab === 'EXISTING' ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1 }}>Existing Participant</button>
+                  <button onClick={() => setManualTab('PROVISIONAL')} className={`btn ${manualTab === 'PROVISIONAL' ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1 }}>Provisional Participant</button>
+                </div>
 
-                {manualResult && !manualResult.error && !showConfirm && (
-                  <div style={{ padding: '1.25rem', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 'bold' }}>{manualResult.participant.name}</div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                      {manualResult.participant.participant_id} <br/> 
-                      Team: {manualResult.participant.team_code || manualResult.participant.team_name || 'No Team'} <br/>
-                      Contact: {manualResult.participant.contact || 'N/A'}
+                {manualTab === 'EXISTING' && (
+                  <>
+                    <form onSubmit={handleManualSearch} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                      <input type="text" value={manualId} onChange={e => setManualId(e.target.value.toUpperCase())} placeholder="e.g. EDG26-001" className="input-field" style={{ flex: 1 }} />
+                      <button type="submit" className="btn btn-primary" disabled={isSearching}><Search size={18} /></button>
+                    </form>
+
+                    {manualResult && !manualResult.error && !showConfirm && (
+                      <div style={{ padding: '1.25rem', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 'bold' }}>{manualResult.participant.name}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                          {manualResult.participant.participant_id} <br/> 
+                          Team: {manualResult.participant.team_code || manualResult.participant.team_name || 'No Team'} <br/>
+                          Contact: {manualResult.participant.contact || 'N/A'}
+                        </div>
+                        
+                        <div style={{ fontSize: '0.85rem', color: '#8b5cf6', marginBottom: '1.5rem' }}>
+                          <strong>Assigned Events:</strong> {manualResult.participations.length > 0 ? manualResult.participations.map((p:any)=>p.name).join(', ') : 'None'}
+                        </div>
+
+                        <button onClick={() => setShowConfirm(true)} className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', fontWeight: 'bold' }}>
+                          Mark Present
+                        </button>
+                      </div>
+                    )}
+
+                    {manualResult && !manualResult.error && showConfirm && (
+                      <div style={{ padding: '1.25rem', backgroundColor: 'rgba(16,185,129,0.05)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <h3 style={{ color: '#fff', margin: '0 0 1rem 0' }}>Confirm Attendance</h3>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                          Participant: <strong style={{ color: '#fff' }}>{manualResult.participant.name}</strong><br/>
+                          ID: <strong style={{ color: '#fff' }}>{manualResult.participant.participant_id}</strong><br/>
+                          Team: <strong style={{ color: '#fff' }}>{manualResult.participant.team_code || '-'}</strong><br/>
+                          Stage: <strong style={{ color: '#fff' }}>{selectedStation.activity_name ? `${selectedStation.activity_name} - Day ${selectedStation.day}` : selectedStation.stage_name}</strong><br/>
+                          Method: <strong style={{ color: '#fff' }}>Manual</strong>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                          <button onClick={() => setShowConfirm(false)} className="btn btn-outline" style={{ flex: 1 }}>Cancel</button>
+                          <button onClick={() => processScan(manualResult.participant.participant_id, 'MANUAL')} className="btn btn-primary" style={{ flex: 1, backgroundColor: '#10b981' }}>Confirm Attendance</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {manualResult?.error && (
+                      <div style={{ color: '#ef4444', padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <AlertCircle size={18} /> {manualResult.error}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {manualTab === 'PROVISIONAL' && (
+                  <form onSubmit={handleProvisionalSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Full Name *</label>
+                      <input type="text" value={provForm.name} onChange={e => setProvForm(f => ({ ...f, name: e.target.value }))} required className="input-field" placeholder="Enter Full Name" />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Contact Number *</label>
+                      <input type="text" value={provForm.contact} onChange={e => setProvForm(f => ({ ...f, contact: e.target.value }))} required className="input-field" placeholder="Enter Phone/Email" />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Team Name / Code (Optional)</label>
+                      <input type="text" value={provForm.teamName} onChange={e => setProvForm(f => ({ ...f, teamName: e.target.value }))} className="input-field" placeholder="e.g. Alpha Traders" />
+                    </div>
+                    {selectedStation.stage_type === 'GENERAL' && (
+                      <div className="form-group">
+                        <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Event Participated In *</label>
+                        <select value={provForm.activityId} onChange={e => setProvForm(f => ({ ...f, activityId: e.target.value }))} required className="input-field">
+                          <option value="">Select Event...</option>
+                          <option value="1">Arthneeti</option>
+                          <option value="2">Finance Ka Funda</option>
+                          <option value="3">Brand Bazigaar</option>
+                          <option value="4">Bull Ring</option>
+                          <option value="5">AI Ki Baat Cheet</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Remarks (Optional)</label>
+                      <input type="text" value={provForm.remarks} onChange={e => setProvForm(f => ({ ...f, remarks: e.target.value }))} className="input-field" placeholder="Registration Reference / Notes" />
                     </div>
                     
-                    <div style={{ fontSize: '0.85rem', color: '#8b5cf6', marginBottom: '1.5rem' }}>
-                      <strong>Assigned Events:</strong> {manualResult.participations.length > 0 ? manualResult.participations.map((p:any)=>p.name).join(', ') : 'None'}
-                    </div>
+                    {provWarnings.length > 0 && (
+                      <div style={{ padding: '1rem', backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', borderRadius: '8px', color: '#f59e0b' }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <AlertCircle size={18} /> Possible Duplicates Found
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: '1.5rem', fontSize: '0.9rem' }}>
+                          {provWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                        <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <input type="checkbox" id="prov-force" checked={provForm.force} onChange={e => setProvForm(f => ({ ...f, force: e.target.checked }))} />
+                          <label htmlFor="prov-force" style={{ fontSize: '0.85rem', color: '#fff' }}>I confirm this is a new participant, record anyway.</label>
+                        </div>
+                      </div>
+                    )}
 
-                    <button onClick={() => setShowConfirm(true)} className="btn btn-primary" style={{ width: '100%', padding: '0.75rem', fontWeight: 'bold' }}>
-                      Mark Present
+                    <button type="submit" disabled={isSearching || (provWarnings.length > 0 && !provForm.force)} className="btn btn-primary" style={{ marginTop: '1rem' }}>
+                      {isSearching ? 'Processing...' : 'Record Provisional Attendance'}
                     </button>
-                  </div>
-                )}
-
-                {manualResult && !manualResult.error && showConfirm && (
-                  <div style={{ padding: '1.25rem', backgroundColor: 'rgba(16,185,129,0.05)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
-                    <h3 style={{ color: '#fff', margin: '0 0 1rem 0' }}>Confirm Attendance</h3>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                      Participant: <strong style={{ color: '#fff' }}>{manualResult.participant.name}</strong><br/>
-                      ID: <strong style={{ color: '#fff' }}>{manualResult.participant.participant_id}</strong><br/>
-                      Team: <strong style={{ color: '#fff' }}>{manualResult.participant.team_code || '-'}</strong><br/>
-                      Stage: <strong style={{ color: '#fff' }}>{selectedStation.activity_name ? `${selectedStation.activity_name} - Day ${selectedStation.day}` : selectedStation.stage_name}</strong><br/>
-                      Method: <strong style={{ color: '#fff' }}>Manual</strong>
-                    </div>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                      <button onClick={() => setShowConfirm(false)} className="btn btn-outline" style={{ flex: 1 }}>Cancel</button>
-                      <button onClick={() => processScan(manualResult.participant.participant_id, 'MANUAL')} className="btn btn-primary" style={{ flex: 1, backgroundColor: '#10b981' }}>Confirm Attendance</button>
-                    </div>
-                  </div>
-                )}
-
-                {manualResult?.error && (
-                  <div style={{ color: '#ef4444', padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <AlertCircle size={18} /> {manualResult.error}
-                  </div>
+                  </form>
                 )}
               </div>
             )}

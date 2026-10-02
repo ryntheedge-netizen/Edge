@@ -22,6 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // Middleware
+app.set('trust proxy', 1);
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));

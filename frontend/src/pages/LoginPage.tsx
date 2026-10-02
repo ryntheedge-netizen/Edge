@@ -19,9 +19,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ title = 'ORGANIZER LOGIN',
     setError('');
     setLoading(true);
 
-    const success = await login(password, username || undefined);
-    if (!success) {
-      setError(`Invalid credentials.`);
+    const result = await login(password, username || undefined);
+    if (!result.success) {
+      setError(result.message || 'Invalid credentials.');
     }
     setLoading(false);
   };

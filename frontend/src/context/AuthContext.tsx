@@ -5,7 +5,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   permissions: string[];
   username: string | null;
-  login: (password: string, username?: string) => Promise<boolean>;
+  login: (password: string, username?: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   hasPermission: (perm: string) => boolean;
 }
@@ -15,7 +15,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   permissions: [],
   username: null,
-  login: async () => false,
+  login: async () => ({ success: false, message: 'Not initialized' }),
   logout: () => {},
   hasPermission: () => false,
 });
@@ -48,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
-  const login = async (password: string, username?: string): Promise<boolean> => {
+  const login = async (password: string, username?: string): Promise<{ success: boolean; message?: string }> => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -59,12 +59,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
       if (res.ok && data.token) {
         setToken(data.token);
-        return true;
+        return { success: true };
       }
-      return false;
+      return { success: false, message: data.error || 'Invalid credentials' };
     } catch (err) {
       console.error('Login request failed:', err);
-      return false;
+      return { success: false, message: 'Network error. Please try again.' };
     }
   };
 

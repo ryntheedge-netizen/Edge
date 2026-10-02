@@ -126,6 +126,128 @@ router.post('/scan', authenticateAttendanceScanner, async (req: Request, res: Re
   }
 });
 
+router.post('/scan/provisional', authenticateAttendanceScanner, async (req: Request, res: Response) => {
+  const { station_id, name, contact, teamName, remarks, activity_id, force } = req.body;
+  const user = (req as any).user.username;
+
+  if (!station_id || !name || !contact) {
+    return res.status(400).json({ success: false, message: "Missing required fields (station, name, contact)." });
+  }
+
+  try {
+    const result = await withTransaction(async (client: PoolClient) => {
+      // 1. Get Station Info
+      const stationRes = await client.query(`SELECT * FROM attendance_stations WHERE id = $1 AND is_active = true`, [station_id]);
+      if (stationRes.rows.length === 0) throw new Error("Invalid or inactive station.");
+      const station = stationRes.rows[0];
+      if (station.status !== 'ACTIVE') throw new Error("STATION_STOPPED: Attendance scanning is currently stopped for this station.");
+
+      // 2. Get Stage Info
+      const stageRes = await client.query(`SELECT * FROM attendance_stages WHERE id = $1 AND is_active = true`, [station.stage_id]);
+      if (stageRes.rows.length === 0) throw new Error("Associated attendance stage is invalid or inactive.");
+      const stage = stageRes.rows[0];
+
+      if (stage.status === 'FINALIZED') {
+        throw new Error("This attendance stage has been finalized and is closed.");
+      }
+
+      const finalActivityId = stage.stage_type === 'EVENT' ? station.activity_id : (activity_id || null);
+      if (stage.stage_type === 'GENERAL' && !finalActivityId) {
+        throw new Error("Event participation must be specified for provisional registration at a general stage.");
+      }
+
+      // Normalize contact for duplicate search
+      const normalizedContact = contact.trim().toLowerCase();
+
+      // 3. Duplicate check if not forced
+      if (!force) {
+        const warnings: string[] = [];
+        
+        // Check existing permanent
+        const dupPermRes = await client.query(`
+          SELECT participant_id, name, contact, team_id 
+          FROM edge_participants 
+          WHERE LOWER(TRIM(contact)) = $1 OR LOWER(TRIM(name)) = LOWER(TRIM($2))
+        `, [normalizedContact, name.trim()]);
+        
+        for (const r of dupPermRes.rows) {
+          warnings.push(`Matches existing participant: ${r.name} (${r.participant_id}) - ${r.contact || 'No Contact'}`);
+        }
+
+        if (warnings.length > 0) {
+          throw { isWarning: true, warnings };
+        }
+      }
+
+      // 4. Create Provisional Identity
+      const provisionalId = `PROV-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      
+      let teamId = null;
+      if (teamName && teamName.trim()) {
+        const teamRes = await client.query(`SELECT id FROM edge_teams WHERE name = $1 OR team_code = $1`, [teamName.trim()]);
+        if (teamRes.rows.length > 0) {
+          teamId = teamRes.rows[0].id;
+        } else {
+          const newTeamRes = await client.query(`INSERT INTO edge_teams (name, team_code) VALUES ($1, $1) RETURNING id`, [teamName.trim()]);
+          teamId = newTeamRes.rows[0].id;
+        }
+      }
+
+      const newPartRes = await client.query(`
+        INSERT INTO edge_participants (participant_id, name, contact, team_id, registration_status, remarks, is_active)
+        VALUES ($1, $2, $3, $4, 'PROVISIONAL', $5, true)
+        RETURNING id, participant_id, name
+      `, [provisionalId, name.trim(), contact.trim(), teamId, remarks || null]);
+      
+      const participant = newPartRes.rows[0];
+
+      // Insert event participation
+      if (finalActivityId) {
+        await client.query(`
+          INSERT INTO edge_event_participations (participant_id, activity_id)
+          VALUES ($1, $2) ON CONFLICT DO NOTHING
+        `, [participant.id, finalActivityId]);
+      }
+
+      // 5. Insert Attendance Record
+      await client.query(`
+        INSERT INTO attendance_records (participant_id, stage_id, activity_id, station_id, attendance_method, marked_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [
+        participant.id,
+        stage.id,
+        stage.stage_type === 'EVENT' ? station.activity_id : null,
+        station.id,
+        'MANUAL',
+        user
+      ]);
+
+      // Log Audit
+      await client.query(`INSERT INTO attendance_audit_logs (actor, action, metadata) VALUES ($1, $2, $3)`, [
+        user, 'PROVISIONAL_PARTICIPANT_CREATED', JSON.stringify({ participant: participant.participant_id, stage: stage.name, station: station.id })
+      ]);
+      await client.query(`INSERT INTO attendance_audit_logs (actor, action, metadata) VALUES ($1, $2, $3)`, [
+        user, 'PROVISIONAL_ATTENDANCE_MARKED_PRESENT', JSON.stringify({ participant: participant.participant_id, stage: stage.name, station: station.id, method: 'PROVISIONAL_MANUAL' })
+      ]);
+
+      return {
+        participant_id: participant.participant_id,
+        name: participant.name,
+        teamName: teamName || '-',
+        stageName: stage.name
+      };
+    });
+
+    return res.json({ success: true, message: "Provisional Attendance Recorded", data: result });
+
+  } catch (err: any) {
+    if (err.isWarning) {
+      return res.status(400).json({ success: false, warnings: err.warnings });
+    }
+    return res.status(400).json({ success: false, message: err.message || "Failed to record provisional attendance." });
+  }
+});
+
 router.delete('/scan/:id', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
   const { id } = req.params;
   const user = (req as any).user.username;
@@ -411,6 +533,104 @@ router.post('/stage/:id/revert', authenticateAttendanceAdmin, async (req: Reques
     res.json({ success: true, message: "Stage reopened successfully" });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message || "Failed to revert stage" });
+  }
+});
+
+router.get('/provisional', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  try {
+    const provisionalRes = await query(`
+      SELECT 
+        p.id, 
+        p.participant_id, 
+        p.name, 
+        p.contact, 
+        p.registration_status, 
+        p.created_at,
+        p.remarks,
+        t.team_code,
+        r.attendance_method,
+        r.marked_by,
+        r.timestamp as attendance_time,
+        st.name as station_name,
+        sg.day as attendance_day,
+        a.name as event_name,
+        'PRESENT' as attendance_status
+      FROM edge_participants p
+      LEFT JOIN edge_teams t ON p.team_id = t.id
+      LEFT JOIN attendance_records r ON r.participant_id = p.id
+      LEFT JOIN attendance_stations st ON r.station_id = st.id
+      LEFT JOIN attendance_stages sg ON r.stage_id = sg.id
+      LEFT JOIN edge_activities a ON r.activity_id = a.id
+      WHERE p.registration_status = 'PROVISIONAL' OR p.registration_status = 'RECONCILED'
+      ORDER BY p.created_at DESC
+    `);
+    res.json({ provisional: provisionalRes.rows });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch provisional participants" });
+  }
+});
+
+router.post('/provisional/:id/reconcile', authenticateAttendanceAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { permanent_participant_id } = req.body;
+  const user = (req as any).user.username;
+
+  if (!permanent_participant_id) {
+    return res.status(400).json({ success: false, message: "Missing permanent participant ID." });
+  }
+
+  try {
+    const result = await withTransaction(async (client: PoolClient) => {
+      const provRes = await client.query(`SELECT * FROM edge_participants WHERE id = $1 AND registration_status = 'PROVISIONAL'`, [id]);
+      if (provRes.rows.length === 0) throw new Error("Provisional participant not found or already reconciled.");
+      const prov = provRes.rows[0];
+
+      const permRes = await client.query(`SELECT * FROM edge_participants WHERE participant_id = $1 AND registration_status = 'PERMANENT'`, [permanent_participant_id]);
+      if (permRes.rows.length === 0) throw new Error("Permanent participant not found.");
+      const perm = permRes.rows[0];
+
+      // 1. Move attendance records to permanent ID
+      // If there's a conflict (i.e. already marked present via QR), we can either skip or let the unique constraint fail.
+      // The prompt says: "Avoid duplicate attendance entries." "If identity matching is ambiguous, require admin review rather than automatically merging."
+      // Since it's done explicitly here, let's update records that don't conflict.
+      
+      const recordsToMove = await client.query(`SELECT * FROM attendance_records WHERE participant_id = $1`, [prov.id]);
+      for (const rec of recordsToMove.rows) {
+        // Check if perm already has this attendance
+        const checkRes = await client.query(`
+          SELECT id FROM attendance_records 
+          WHERE participant_id = $1 AND stage_id = $2 AND (activity_id = $3 OR (activity_id IS NULL AND $3 IS NULL))
+        `, [perm.id, rec.stage_id, rec.activity_id]);
+        
+        if (checkRes.rows.length === 0) {
+          await client.query(`UPDATE attendance_records SET participant_id = $1 WHERE id = $2`, [perm.id, rec.id]);
+        } else {
+          // It's a duplicate, we should probably delete the provisional record's attendance to clean it up
+          await client.query(`DELETE FROM attendance_records WHERE id = $1`, [rec.id]);
+        }
+      }
+
+      // 2. Mark provisional as reconciled
+      await client.query(`
+        UPDATE edge_participants 
+        SET registration_status = 'RECONCILED', reconciled_to = $1, reconciled_by = $2, reconciled_at = CURRENT_TIMESTAMP, is_active = false
+        WHERE id = $3
+      `, [perm.id, user, prov.id]);
+
+      // 3. Log Audit
+      await client.query(`INSERT INTO attendance_audit_logs (actor, action, metadata) VALUES ($1, $2, $3)`, [
+        user, 'PROVISIONAL_PARTICIPANT_RECONCILED', JSON.stringify({ 
+          provisional_id: prov.participant_id, 
+          permanent_id: perm.participant_id 
+        })
+      ]);
+
+      return { success: true };
+    });
+
+    res.json({ success: true, message: "Reconciled successfully." });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || "Failed to reconcile." });
   }
 });
 
