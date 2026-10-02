@@ -69,7 +69,8 @@ export const AuctionDashboardPage: React.FC = () => {
   const [initError, setInitError] = useState<string | null>(null);
 
   // Forms State
-  const [bidForm, setBidForm] = useState({ traderId: '', securityCode: '', bidAmount: '', envelopeId: '' });
+  const [bidForm, setBidForm] = useState({ traderId: '', securityCode: '', bidAmount: '' });
+  const [envForm, setEnvForm] = useState({ traderId: '', envelopeId: '' });
   const [setupForm, setSetupForm] = useState({ numTraders: '', startingCorpus: '2000000' });
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -175,7 +176,7 @@ export const AuctionDashboardPage: React.FC = () => {
       const data = await res.json();
       if (res.ok) {
         showSuccess('Bid successful');
-        setBidForm({ traderId: '', securityCode: '', bidAmount: '', envelopeId: '' });
+        setBidForm({ traderId: '', securityCode: '', bidAmount: '' });
         fetchTraders(); // Background update
       } else {
         showError(data.error || 'Bid failed');
@@ -187,7 +188,8 @@ export const AuctionDashboardPage: React.FC = () => {
     }
   };
 
-  const handleEnvSubmit = async () => {
+  const handleEnvSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
     try {
       const res = await fetch('/api/auction/envelope', {
@@ -197,8 +199,8 @@ export const AuctionDashboardPage: React.FC = () => {
           'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({
-          traderId: bidForm.traderId,
-          envelopeId: bidForm.envelopeId,
+          traderId: envForm.traderId,
+          envelopeId: envForm.envelopeId,
           auctionRound: round
         })
       });
@@ -206,7 +208,8 @@ export const AuctionDashboardPage: React.FC = () => {
       const data = await res.json();
       if (res.ok) {
         showSuccess('Envelope applied successfully');
-        setBidForm({ ...bidForm, envelopeId: '' });
+        setEnvForm({ ...envForm, envelopeId: '' });
+        fetchTraders();
       } else {
         showError(data.error || 'Failed to apply envelope');
       }
@@ -511,8 +514,9 @@ export const AuctionDashboardPage: React.FC = () => {
 
       {/* BID ENTRY TAB */}
       {activeTab === 'bid' && (
-        <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-          <div className="panel-card">
+        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {/* LIVE BID ENTRY */}
+          <div className="panel-card" style={{ flex: '1 1 400px', maxWidth: '600px' }}>
             <div className="panel-header" style={{ background: 'var(--bg-panel-alt)' }}>
               <Gavel size={18} />
               <span style={{ fontWeight: 'bold' }}>LIVE BID ENTRY - ROUND {round}</span>
@@ -602,29 +606,6 @@ export const AuctionDashboardPage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="form-group" style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3b82f6' }}>
-                    <AlertCircle size={14} /> Envelope Controls
-                  </label>
-                  <input 
-                    type="number" 
-                    className="form-input"
-                    value={bidForm.envelopeId} 
-                    onChange={e => setBidForm({...bidForm, envelopeId: e.target.value})} 
-                    placeholder="Envelope ID (Optional)"
-                    style={{ marginBottom: '0.75rem' }}
-                  />
-                  <button 
-                    type="button" 
-                    onClick={handleEnvSubmit}
-                    className="btn btn-outline"
-                    disabled={loading || !bidForm.traderId || !bidForm.envelopeId}
-                    style={{ width: '100%', padding: '0.65rem', fontSize: '0.9rem', borderColor: 'rgba(59, 130, 246, 0.5)', color: '#3b82f6' }}
-                  >
-                    Apply Envelope Effect Only
-                  </button>
-                </div>
-
                 <button 
                   type="submit" 
                   className="btn btn-primary"
@@ -632,6 +613,56 @@ export const AuctionDashboardPage: React.FC = () => {
                   style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', marginTop: '1rem' }}
                 >
                   {loading ? 'Processing...' : 'Submit Bid'}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* ENVELOPE BID ENTRY */}
+          <div className="panel-card" style={{ flex: '1 1 400px', maxWidth: '600px' }}>
+            <div className="panel-header" style={{ background: 'var(--bg-panel-alt)' }}>
+              <AlertCircle size={18} color="#3b82f6" />
+              <span style={{ fontWeight: 'bold', color: '#3b82f6' }}>ENVELOPE ENTRY - ROUND {round}</span>
+            </div>
+            
+            <div style={{ padding: '2rem' }}>
+              <form onSubmit={handleEnvSubmit}>
+                <div className="form-group">
+                  <label className="form-label">Trader ID</label>
+                  <input 
+                    type="text" 
+                    className="form-input"
+                    value={envForm.traderId} 
+                    onChange={e => setEnvForm({...envForm, traderId: e.target.value})} 
+                    placeholder="e.g. TR01"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Envelope ID</label>
+                  <input 
+                    type="number" 
+                    className="form-input"
+                    value={envForm.envelopeId} 
+                    onChange={e => setEnvForm({...envForm, envelopeId: e.target.value})} 
+                    placeholder="e.g. 5"
+                    required
+                    style={{ marginBottom: '1rem' }}
+                  />
+                </div>
+
+                <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)', marginBottom: '1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  Submit an envelope to apply positive or negative effects directly to a trader's portfolio.
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="btn btn-outline"
+                  disabled={loading || !envForm.traderId || !envForm.envelopeId}
+                  style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', borderColor: 'rgba(59, 130, 246, 0.5)', color: '#3b82f6' }}
+                >
+                  {loading ? 'Processing...' : 'Apply Envelope Effect'}
                 </button>
               </form>
             </div>

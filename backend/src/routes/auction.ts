@@ -276,7 +276,7 @@ router.post('/bid', async (req, res) => {
       return res.status(error.status).json({ error: error.message });
     }
     console.error(error);
-    res.status(500).json({ error: 'An unexpected error occurred.' });
+    res.status(500).json({ error: 'An unexpected error occurred.', details: error.message, stack: error.stack });
   }
 });
 

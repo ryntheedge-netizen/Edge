@@ -221,6 +221,20 @@ export async function initDatabase() {
     const { schemaSql } = await import('./schema');
     await client.query(schemaSql);
 
+    // Ensure foreign keys correctly point to auction_securities instead of securities 
+    // due to legacy schema bug that persists on cloned Neon DB branches
+    try {
+      await client.query(`
+        ALTER TABLE auction_bids DROP CONSTRAINT IF EXISTS auction_bids_security_id_fkey;
+        ALTER TABLE auction_bids ADD CONSTRAINT auction_bids_security_id_fkey FOREIGN KEY (security_id) REFERENCES auction_securities(id);
+        
+        ALTER TABLE auction_holdings DROP CONSTRAINT IF EXISTS auction_holdings_security_id_fkey;
+        ALTER TABLE auction_holdings ADD CONSTRAINT auction_holdings_security_id_fkey FOREIGN KEY (security_id) REFERENCES auction_securities(id);
+      `);
+    } catch (err) {
+      console.log('[DB] Note: Could not recreate auction foreign keys', err);
+    }
+
     const existingEvent = await client.query(`SELECT id FROM events ORDER BY id ASC LIMIT 1`);
     if (existingEvent.rows.length === 0) {
       await seedDefaultData(client);
