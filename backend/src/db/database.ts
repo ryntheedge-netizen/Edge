@@ -216,11 +216,6 @@ export async function seedDefaultData(client?: PoolClient) {
 }
 
 export async function initDatabase() {
-  if (process.env.VERCEL) {
-    console.log('[DB] Skipping database initialization script on Vercel cold start.');
-    return;
-  }
-
   const client = await pool.connect();
   try {
     let schemaPath = path.resolve(__dirname, 'schema.sql');
@@ -252,6 +247,17 @@ export async function initDatabase() {
     }
 
     await migrateSecurities(undefined, client);
+
+    // Initialize Auction Securities if missing
+    try {
+      const existingSecurities = await client.query('SELECT COUNT(*) FROM auction_securities');
+      if (Number(existingSecurities.rows[0].count) === 0) {
+        const { seedAuctionSecurities } = await import('../scripts/seed_auction_securities');
+        await seedAuctionSecurities(client);
+      }
+    } catch (err) {
+      console.error('[DB] Failed to seed auction securities on init', err);
+    }
 
   } finally {
     client.release();

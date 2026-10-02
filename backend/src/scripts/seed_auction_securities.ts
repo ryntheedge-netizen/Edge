@@ -237,13 +237,16 @@ const data = `
 225 Iron Ore                                                                   -13.24%
 `;
 
-async function seed() {
-  const client = await pool.connect();
+export async function seedAuctionSecurities(client: any) {
   try {
     const lines = data.trim().split('\n').filter(l => l.trim().length > 0);
     
     // First, clear existing auction securities just in case
     await client.query('TRUNCATE TABLE auction_securities CASCADE');
+
+    const values: any[] = [];
+    const placeholders: string[] = [];
+    let paramIndex = 1;
 
     for (const line of lines) {
       // Each line has: [code] [name... name] [returnPct]%
@@ -254,13 +257,19 @@ async function seed() {
         const name = match[2].trim();
         const returnPct = parseFloat(match[3]);
         
-        await client.query(`
-          INSERT INTO auction_securities (code, name, return_pct)
-          VALUES ($1, $2, $3)
-        `, [code, name, returnPct]);
+        placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
+        values.push(code, name, returnPct);
       } else {
         console.error('Failed to parse line:', line);
       }
+    }
+    
+    if (values.length > 0) {
+      const query = `
+        INSERT INTO auction_securities (code, name, return_pct)
+        VALUES ${placeholders.join(', ')}
+      `;
+      await client.query(query, values);
     }
     
     const count = await client.query('SELECT COUNT(*) FROM auction_securities');
@@ -268,10 +277,5 @@ async function seed() {
     
   } catch (err) {
     console.error('Error seeding data', err);
-  } finally {
-    client.release();
-    pool.end();
   }
 }
-
-seed();
