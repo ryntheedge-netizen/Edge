@@ -31,10 +31,108 @@ export function authenticateAuctionAdmin(req: Request, res: Response, next: impo
 
 router.use(authenticateAuctionAdmin);
 
-// Helper to normalize trader ID
-const normalizeTraderId = (id: string) => id.trim().toUpperCase();
+// Helper to resolve and normalize trader ID against master
+const resolveTraderId = async (input: string, client = pool) => {
+  if (!input) return null;
+  const val = input.trim().toUpperCase();
+  // Fetch all existing traders
+  const res = await client.query('SELECT trader_id FROM auction_traders');
+  const traders = res.rows.map(r => r.trader_id.toUpperCase());
+  
+  // Exact match
+  if (traders.includes(val)) return val;
+  
+  // Strip non-numeric part from input
+  const numericInputMatch = val.match(/\d+/);
+  if (numericInputMatch) {
+    const numValue = parseInt(numericInputMatch[0], 10);
+    // Find matching trader
+    for (const t of traders) {
+      const tMatch = t.match(/\d+/);
+      if (tMatch && parseInt(tMatch[0], 10) === numValue) {
+        return t; // Returns canonical e.g., 'TR01'
+      }
+    }
+  }
+  return val; // Return fallback for validation to fail
+};
+
 // Helper to normalize security code
 const normalizeSecurityCode = (code: string) => code.replace(/^0+/, '') || '0';
+
+// 0. Auction Lifecycle
+router.get('/state', async (req, res) => {
+  try {
+    const stateRes = await pool.query('SELECT status FROM auction_state WHERE id = 1');
+    if (stateRes.rows.length === 0) return res.json({ status: 'NOT_STARTED' });
+    res.json({ status: stateRes.rows[0].status });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch auction state' });
+  }
+});
+
+router.post('/state', async (req, res) => {
+  try {
+    const { action } = req.body;
+    const validActions = ['START', 'PAUSE', 'RESUME', 'END', 'RESET'];
+    if (!validActions.includes(action)) return res.status(400).json({ error: 'Invalid action.' });
+
+    await withTransaction(async (client) => {
+      const stateRes = await client.query('SELECT status FROM auction_state WHERE id = 1 FOR UPDATE');
+      let currentStatus = stateRes.rows.length > 0 ? stateRes.rows[0].status : 'NOT_STARTED';
+      
+      let nextStatus = currentStatus;
+      if (action === 'START') {
+        if (currentStatus !== 'NOT_STARTED') throw new Error('Auction is already started.');
+        nextStatus = 'RUNNING';
+      } else if (action === 'PAUSE') {
+        if (currentStatus !== 'RUNNING') throw new Error('Auction must be RUNNING to pause.');
+        nextStatus = 'PAUSED';
+      } else if (action === 'RESUME') {
+        if (currentStatus !== 'PAUSED') throw new Error('Auction must be PAUSED to resume.');
+        nextStatus = 'RUNNING';
+      } else if (action === 'END') {
+        if (currentStatus === 'NOT_STARTED' || currentStatus === 'ENDED') throw new Error('Cannot end from current state.');
+        nextStatus = 'ENDED';
+      } else if (action === 'RESET') {
+        // RESET clears current auction trader state
+        await client.query('DELETE FROM auction_audit_logs');
+        await client.query('DELETE FROM auction_envelopes_applied');
+        await client.query('DELETE FROM auction_transfers');
+        await client.query('DELETE FROM auction_holdings');
+        await client.query('DELETE FROM auction_bids');
+        await client.query('DELETE FROM auction_traders'); // Clear trader portfolio data generated for auction session
+        nextStatus = 'NOT_STARTED';
+      }
+
+      await client.query(`
+        INSERT INTO auction_state (id, status) VALUES (1, $1)
+        ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = CURRENT_TIMESTAMP
+      `, [nextStatus]);
+
+      // Audit Log
+      if (action !== 'RESET') {
+        await client.query(`
+          INSERT INTO auction_audit_logs (actor, action, details) VALUES ($1, $2, $3)
+        `, [(req as any).user.username, `AUCTION_${action}`, `Auction lifecycle changed to ${nextStatus}`]);
+      }
+    });
+
+    res.json({ success: true, message: `Auction ${action.toLowerCase()} successful.` });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Failed to update auction state' });
+  }
+});
+
+// 0.1 Envelope Master
+router.get('/envelopes', async (req, res) => {
+  try {
+    const envs = await pool.query('SELECT envelope_code, envelope_name FROM auction_master_envelopes ORDER BY id ASC');
+    res.json(envs.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch envelope master' });
+  }
+});
 
 // 1. Get all traders and their portfolios
 router.get('/traders', async (req, res) => {
@@ -98,7 +196,7 @@ router.get('/traders', async (req, res) => {
         currentHoldingsValue,
         totalPortfolioValue,
         difference,
-        isLowCorpus: remainingCorpus < 500000
+        isLowCorpus: remainingCorpus <= 500000
       });
     }
 
@@ -172,7 +270,7 @@ router.get('/traders/:id', async (req, res) => {
       currentHoldingsValue,
       totalPortfolioValue,
       difference: totalPortfolioValue - startingCorpus,
-      isLowCorpus: remainingCorpus < 500000,
+      isLowCorpus: remainingCorpus <= 500000,
       holdings
     });
   } catch (error) {
@@ -187,7 +285,8 @@ router.post('/traders', async (req, res) => {
     const { traderId } = req.body;
     if (!traderId) return res.status(400).json({ error: 'Trader ID required' });
     
-    const normalized = normalizeTraderId(traderId);
+    const normalized = await resolveTraderId(traderId);
+    if (!normalized) return res.status(400).json({ error: 'Trader ID required' });
     
     await pool.query(`
       INSERT INTO auction_traders (trader_id) VALUES ($1) ON CONFLICT DO NOTHING
@@ -202,20 +301,35 @@ router.post('/traders', async (req, res) => {
 // 3. Submit a Bid
 router.post('/bid', async (req, res) => {
   try {
-    let { traderId, securityCode, bidAmount, envelopeId, auctionRound } = req.body;
+    let { traderId, securityCode, bidAmount, envelopeCode } = req.body;
     
-    traderId = normalizeTraderId(traderId);
-    securityCode = normalizeSecurityCode(String(securityCode));
+    traderId = await resolveTraderId(traderId);
+    securityCode = securityCode ? normalizeSecurityCode(String(securityCode)) : null;
     bidAmount = Number(bidAmount);
-    envelopeId = envelopeId ? Number(envelopeId) : 0;
-    auctionRound = Number(auctionRound);
+    envelopeCode = envelopeCode ? String(envelopeCode).trim().toUpperCase() : null;
 
     if (!traderId) return res.status(400).json({ error: 'Invalid trader ID.' });
-    if (!securityCode) return res.status(400).json({ error: 'Invalid security code.' });
     if (isNaN(bidAmount) || bidAmount <= 0) return res.status(400).json({ error: 'Bid amount must be greater than ₹0.' });
-    if (auctionRound !== 1 && auctionRound !== 2) return res.status(400).json({ error: 'Invalid auction round.' });
+
+    // Validate Envelope or Security based on input
+    if (envelopeCode && !securityCode) {
+      // Envelope Bid
+      const envRes = await pool.query('SELECT envelope_code FROM auction_master_envelopes WHERE envelope_code = $1', [envelopeCode]);
+      if (envRes.rows.length === 0) return res.status(400).json({ error: 'Invalid Envelope Code.' });
+    } else if (securityCode && !envelopeCode) {
+      // Live Bid
+      // securityCode will be validated inside transaction
+    } else {
+      return res.status(400).json({ error: 'Provide either Security Code for Live Bid or Envelope Code for Envelope Bid.' });
+    }
 
     await withTransaction(async (client) => {
+      // Check Auction State
+      const stateRes = await client.query('SELECT status FROM auction_state WHERE id = 1');
+      const auctionStatus = stateRes.rows.length > 0 ? stateRes.rows[0].status : 'NOT_STARTED';
+      if (auctionStatus !== 'RUNNING') {
+        throw { status: 400, message: 'Auction is not running. Bids cannot be placed.' };
+      }
       // Check trader exists
       const traderRes = await client.query(`SELECT starting_corpus FROM auction_traders WHERE trader_id = $1`, [traderId]);
       if (traderRes.rows.length === 0) {
@@ -224,13 +338,15 @@ router.post('/bid', async (req, res) => {
       
       const startingCorpus = Number(traderRes.rows[0].starting_corpus);
 
-      // Check security exists
-      // Using code as securityCode
-      const secRes = await client.query(`SELECT id FROM auction_securities WHERE code = $1`, [securityCode]);
-      if (secRes.rows.length === 0) {
-        throw { status: 400, message: 'Security not found.' };
+      // Check security exists if it's a live bid
+      let securityId = null;
+      if (securityCode) {
+        const secRes = await client.query(`SELECT id FROM auction_securities WHERE code = $1`, [securityCode]);
+        if (secRes.rows.length === 0) {
+          throw { status: 400, message: 'Security not found.' };
+        }
+        securityId = secRes.rows[0].id;
       }
-      const securityId = secRes.rows[0].id;
 
       // Calculate current remaining corpus
       const holdingsRes = await client.query(`
@@ -244,30 +360,30 @@ router.post('/bid', async (req, res) => {
       if (remainingCorpus < bidAmount) {
         // Record rejected bid
         await client.query(`
-          INSERT INTO auction_bids (auction_round, trader_id, security_id, bid_amount, envelope_id, status, rejection_reason)
-          VALUES ($1, $2, $3, $4, $5, 'REJECTED', 'Insufficient remaining corpus')
-        `, [auctionRound, traderId, securityId, bidAmount, envelopeId]);
+          INSERT INTO auction_bids (trader_id, security_id, bid_amount, envelope_code, status, rejection_reason)
+          VALUES ($1, $2, $3, $4, 'REJECTED', 'Insufficient remaining corpus')
+        `, [traderId, securityId, bidAmount, envelopeCode]);
         
         throw { status: 400, message: 'Insufficient remaining corpus.' };
       }
 
       // Record successful bid
       await client.query(`
-        INSERT INTO auction_bids (auction_round, trader_id, security_id, bid_amount, envelope_id, status)
-        VALUES ($1, $2, $3, $4, $5, 'SUCCESS')
-      `, [auctionRound, traderId, securityId, bidAmount, envelopeId]);
+        INSERT INTO auction_bids (trader_id, security_id, bid_amount, envelope_code, status)
+        VALUES ($1, $2, $3, $4, 'SUCCESS')
+      `, [traderId, securityId, bidAmount, envelopeCode]);
 
       // Create holding
       await client.query(`
-        INSERT INTO auction_holdings (auction_round, trader_id, security_id, acquisition_price, envelope_id)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [auctionRound, traderId, securityId, bidAmount, envelopeId]);
+        INSERT INTO auction_holdings (trader_id, security_id, acquisition_price, envelope_code)
+        VALUES ($1, $2, $3, $4)
+      `, [traderId, securityId, bidAmount, envelopeCode]);
 
       // Audit Log
       await client.query(`
-        INSERT INTO auction_audit_logs (actor, action, trader_id, security_id, bid_amount, envelope_id, auction_round, details)
-        VALUES ($1, 'BID_SUCCESS', $2, $3, $4, $5, $6, $7)
-      `, [(req as any).user.username, traderId, securityId, bidAmount, envelopeId, auctionRound, 'Bid successful and holding created']);
+        INSERT INTO auction_audit_logs (actor, action, trader_id, security_id, bid_amount, envelope_code, details)
+        VALUES ($1, 'BID_SUCCESS', $2, $3, $4, $5, $6)
+      `, [(req as any).user.username, traderId, securityId, bidAmount, envelopeCode, 'Bid successful and holding created']);
     });
 
     res.json({ success: true, message: 'Bid successful.' });
@@ -283,17 +399,22 @@ router.post('/bid', async (req, res) => {
 // 4. Transfer Security
 router.post('/transfer', async (req, res) => {
   try {
-    let { holdingId, toTraderId, transferPrice, auctionRound } = req.body;
+    let { holdingId, toTraderId, transferPrice } = req.body;
     
     holdingId = Number(holdingId);
-    toTraderId = normalizeTraderId(toTraderId);
+    toTraderId = await resolveTraderId(toTraderId);
     transferPrice = Number(transferPrice);
-    auctionRound = Number(auctionRound);
     
     if (isNaN(transferPrice) || transferPrice <= 0) return res.status(400).json({ error: 'Invalid transfer price.' });
-    if (auctionRound !== 1 && auctionRound !== 2) return res.status(400).json({ error: 'Invalid auction round.' });
     
     await withTransaction(async (client) => {
+      // Check Auction State
+      const stateRes = await client.query('SELECT status FROM auction_state WHERE id = 1');
+      const auctionStatus = stateRes.rows.length > 0 ? stateRes.rows[0].status : 'NOT_STARTED';
+      if (auctionStatus !== 'RUNNING') {
+        throw { status: 400, message: 'Auction is not running. Transfers cannot be executed.' };
+      }
+
       // Get holding
       const holdRes = await client.query(`SELECT * FROM auction_holdings WHERE id = $1`, [holdingId]);
       if (holdRes.rows.length === 0) throw { status: 400, message: 'Holding not found.' };
@@ -316,9 +437,9 @@ router.post('/transfer', async (req, res) => {
       
       // Record transfer
       await client.query(`
-        INSERT INTO auction_transfers (auction_round, holding_id, from_trader_id, to_trader_id, transfer_price)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [auctionRound, holdingId, fromTraderId, toTraderId, transferPrice]);
+        INSERT INTO auction_transfers (holding_id, from_trader_id, to_trader_id, transfer_price)
+        VALUES ($1, $2, $3, $4)
+      `, [holdingId, fromTraderId, toTraderId, transferPrice]);
       
       // Update holding
       await client.query(`
@@ -329,9 +450,9 @@ router.post('/transfer', async (req, res) => {
       
       // Audit log
       await client.query(`
-        INSERT INTO auction_audit_logs (actor, action, trader_id, security_id, bid_amount, auction_round, details)
-        VALUES ($1, 'TRANSFER_SUCCESS', $2, $3, $4, $5, $6)
-      `, [(req as any).user.username, fromTraderId, holding.security_id, transferPrice, auctionRound, `Transferred to ${toTraderId}`]);
+        INSERT INTO auction_audit_logs (actor, action, trader_id, security_id, bid_amount, details)
+        VALUES ($1, 'TRANSFER_SUCCESS', $2, $3, $4, $5)
+      `, [(req as any).user.username, fromTraderId, holding.security_id, transferPrice, `Transferred to ${toTraderId}`]);
     });
     
     res.json({ success: true, message: 'Transfer successful.' });
@@ -342,34 +463,32 @@ router.post('/transfer', async (req, res) => {
   }
 });
 
-// 5. Apply Envelope
+// 5. Apply Envelope (Legacy - Now Handled via Bid, but kept for compatibility if needed)
 router.post('/envelope', async (req, res) => {
   try {
-    let { traderId, envelopeId, auctionRound } = req.body;
+    let { traderId, envelopeCode } = req.body;
     
-    traderId = normalizeTraderId(traderId);
-    envelopeId = Number(envelopeId);
-    auctionRound = Number(auctionRound);
+    traderId = await resolveTraderId(traderId);
+    envelopeCode = String(envelopeCode).trim().toUpperCase();
     
-    if (!envelopeId) return res.status(400).json({ error: 'Valid Envelope ID required.' });
-    if (auctionRound !== 1 && auctionRound !== 2) return res.status(400).json({ error: 'Invalid auction round.' });
+    if (!envelopeCode) return res.status(400).json({ error: 'Valid Envelope Code required.' });
     
     await withTransaction(async (client) => {
       // Check trader
-      const traderRes = await client.query(`SELECT id FROM auction_traders WHERE trader_id = $1`, [traderId]);
+      const traderRes = await client.query(`SELECT trader_id FROM auction_traders WHERE trader_id = $1`, [traderId]);
       if (traderRes.rows.length === 0) throw { status: 400, message: 'Invalid trader ID.' };
       
       // Record envelope application
       await client.query(`
-        INSERT INTO auction_envelopes_applied (auction_round, trader_id, envelope_id, details)
-        VALUES ($1, $2, $3, $4)
-      `, [auctionRound, traderId, envelopeId, 'Envelope applied (rules pending)']);
+        INSERT INTO auction_envelopes_applied (trader_id, envelope_code, details)
+        VALUES ($1, $2, $3)
+      `, [traderId, envelopeCode, 'Envelope applied (rules pending)']);
       
       // Audit log
       await client.query(`
-        INSERT INTO auction_audit_logs (actor, action, trader_id, envelope_id, auction_round, details)
-        VALUES ($1, 'ENVELOPE_APPLIED', $2, $3, $4, $5)
-      `, [(req as any).user.username, traderId, envelopeId, auctionRound, 'Envelope applied']);
+        INSERT INTO auction_audit_logs (actor, action, trader_id, envelope_code, details)
+        VALUES ($1, 'ENVELOPE_APPLIED', $2, $3, $4)
+      `, [(req as any).user.username, traderId, envelopeCode, 'Envelope applied']);
     });
     
     res.json({ success: true, message: 'Envelope applied successfully.' });
@@ -392,8 +511,7 @@ router.get('/audit', async (req, res) => {
         l.trader_id as "traderId",
         s.code as security,
         l.bid_amount as "bidAmount",
-        l.envelope_id as "envelopeId",
-        l.auction_round as "round",
+        l.envelope_code as "envelopeCode",
         l.details
       FROM auction_audit_logs l
       LEFT JOIN auction_securities s ON l.security_id = s.id

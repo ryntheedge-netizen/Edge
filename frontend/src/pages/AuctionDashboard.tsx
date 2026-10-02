@@ -20,16 +20,20 @@ interface TraderPortfolio {
   holdings?: Holding[];
 }
 
+interface Envelope {
+  envelope_code: string;
+  envelope_name: string;
+}
+
 interface Holding {
   id: number;
-  round: number;
   securityCode: string;
   securityName: string;
   acquisitionPrice: number;
   currentReturnPct: number;
   currentValue: number;
   gainLoss: number;
-  envelopeId: number;
+  envelopeCode: string;
 }
 
 interface AuditLog {
@@ -40,8 +44,7 @@ interface AuditLog {
   traderId: string;
   security: string;
   bidAmount: number;
-  envelopeId: number;
-  round: number;
+  envelopeCode: string;
   details: string;
 }
 
@@ -53,14 +56,22 @@ const formatCurrency = (val: number) => {
   }).format(val);
 };
 
+const formatIndianNumber = (val: string) => {
+  if (!val) return '';
+  const numStr = val.replace(/,/g, '');
+  if (isNaN(Number(numStr))) return val;
+  return Number(numStr).toLocaleString('en-IN');
+};
+
 export const AuctionDashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'bid' | 'portfolio' | 'envelope' | 'audit'>('overview');
-  const [round, setRound] = useState<number>(1);
   const { token, username } = useAuth();
   const { showError, showSuccess } = useToast();
   
   // Data State
+  const [auctionState, setAuctionState] = useState<'NOT_STARTED' | 'RUNNING' | 'PAUSED' | 'ENDED'>('NOT_STARTED');
   const [securities, setSecurities] = useState<Security[]>([]);
+  const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [traders, setTraders] = useState<TraderPortfolio[]>([]);
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -70,10 +81,28 @@ export const AuctionDashboardPage: React.FC = () => {
 
   // Forms State
   const [bidForm, setBidForm] = useState({ traderId: '', securityCode: '', bidAmount: '' });
-  const [envForm, setEnvForm] = useState({ traderId: '', envelopeId: '' });
+  const [envForm, setEnvForm] = useState({ traderId: '', envelopeCode: '', bidAmount: '' });
   const [setupForm, setSetupForm] = useState({ numTraders: '', startingCorpus: '2000000' });
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
+
+  const fetchState = async () => {
+    try {
+      const res = await fetch('/api/auction/state', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setAuctionState((await res.json()).status);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchEnvelopes = async () => {
+    try {
+      const res = await fetch('/api/auction/envelopes', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setEnvelopes(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchSecurities = async () => {
     try {
@@ -98,7 +127,22 @@ export const AuctionDashboardPage: React.FC = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const data = await res.json();
+        let data: TraderPortfolio[] = await res.json();
+        
+        // Ensure ranking order if ended
+        const stateRes = await fetch('/api/auction/state', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (stateRes.ok) {
+          const st = await stateRes.json();
+          if (st.status === 'ENDED') {
+            data = data.sort((a, b) => {
+              if (b.totalPortfolioValue === a.totalPortfolioValue) {
+                return a.traderId.localeCompare(b.traderId);
+              }
+              return b.totalPortfolioValue - a.totalPortfolioValue;
+            });
+          }
+        }
+        
         setTraders(data);
         setIsInitialized(data.length > 0);
       } else {
@@ -108,7 +152,7 @@ export const AuctionDashboardPage: React.FC = () => {
     } catch (e: any) {
       console.error('fetchTraders error:', e);
       setInitError(e.message || 'Network error fetching traders');
-      setIsInitialized(null); // Keep it null so it shows error, not setup
+      setIsInitialized(null);
     }
   };
 
@@ -138,7 +182,9 @@ export const AuctionDashboardPage: React.FC = () => {
 
   useEffect(() => {
     if (token) {
+      fetchState();
       fetchSecurities();
+      fetchEnvelopes();
       fetchTraders();
     }
   }, [token]);
@@ -169,13 +215,13 @@ export const AuctionDashboardPage: React.FC = () => {
         },
         body: JSON.stringify({
           ...bidForm,
-          auctionRound: round
+          bidAmount: bidForm.bidAmount.replace(/,/g, '') // strip formatting
         })
       });
       
       const data = await res.json();
       if (res.ok) {
-        showSuccess('Bid successful');
+        showSuccess('Live Bid successful');
         setBidForm({ traderId: '', securityCode: '', bidAmount: '' });
         fetchTraders(); // Background update
       } else {
@@ -192,7 +238,7 @@ export const AuctionDashboardPage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auction/envelope', {
+      const res = await fetch('/api/auction/bid', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -200,18 +246,44 @@ export const AuctionDashboardPage: React.FC = () => {
         },
         body: JSON.stringify({
           traderId: envForm.traderId,
-          envelopeId: envForm.envelopeId,
-          auctionRound: round
+          envelopeCode: envForm.envelopeCode,
+          bidAmount: envForm.bidAmount.replace(/,/g, '') // strip formatting
         })
       });
       
       const data = await res.json();
       if (res.ok) {
-        showSuccess('Envelope applied successfully');
-        setEnvForm({ ...envForm, envelopeId: '' });
+        showSuccess('Envelope Bid successful');
+        setEnvForm({ traderId: '', envelopeCode: '', bidAmount: '' });
         fetchTraders();
       } else {
         showError(data.error || 'Failed to apply envelope');
+      }
+    } catch (err) {
+      showError('Network error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStateAction = async (action: string) => {
+    if (action === 'RESET' && !confirm('Reset Auction?\n\nThis will clear all current trader portfolios and Auction data. This action cannot be undone.')) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auction/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showSuccess(`Auction ${action} successful`);
+        fetchState();
+        fetchTraders();
+      } else {
+        showError(data.error || `Failed to ${action} auction`);
       }
     } catch (err) {
       showError('Network error');
@@ -405,16 +477,31 @@ export const AuctionDashboardPage: React.FC = () => {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-panel)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-          <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Active Round</span>
-          <select 
-            value={round} 
-            onChange={(e) => setRound(Number(e.target.value))}
-            className="form-input"
-            style={{ margin: 0, width: '120px', fontWeight: 'bold' }}
-          >
-            <option value={1}>Round 1</option>
-            <option value={2}>Round 2</option>
-          </select>
+          <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Status: <span style={{ color: auctionState === 'RUNNING' ? '#10b981' : auctionState === 'PAUSED' ? '#f59e0b' : auctionState === 'ENDED' ? '#ef4444' : '#6b7280' }}>{auctionState}</span></span>
+          
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {auctionState === 'NOT_STARTED' && (
+              <button onClick={() => handleStateAction('START')} className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}>Start</button>
+            )}
+            
+            {auctionState === 'RUNNING' && (
+              <>
+                <button onClick={() => handleStateAction('PAUSE')} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem', color: '#f59e0b', borderColor: '#f59e0b' }}>Pause</button>
+                <button onClick={() => handleStateAction('END')} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem', color: '#ef4444', borderColor: '#ef4444' }}>End</button>
+              </>
+            )}
+
+            {auctionState === 'PAUSED' && (
+              <>
+                <button onClick={() => handleStateAction('RESUME')} className="btn btn-primary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem', backgroundColor: '#10b981', borderColor: '#10b981' }}>Resume</button>
+                <button onClick={() => handleStateAction('END')} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem', color: '#ef4444', borderColor: '#ef4444' }}>End</button>
+              </>
+            )}
+
+            {(auctionState === 'ENDED' || auctionState === 'NOT_STARTED') && (
+              <button onClick={() => handleStateAction('RESET')} className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem', color: '#ef4444', borderColor: '#ef4444' }}>Reset</button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -431,9 +518,9 @@ export const AuctionDashboardPage: React.FC = () => {
         <div className="admin-grid">
           {/* Summary Cards */}
           <div className="panel-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>CURRENT ROUND</span>
-            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              Round {round}
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>AUCTION STATUS</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: auctionState === 'RUNNING' ? '#10b981' : auctionState === 'PAUSED' ? '#f59e0b' : auctionState === 'ENDED' ? '#ef4444' : '#6b7280' }}>
+              {auctionState}
             </span>
           </div>
           <div className="panel-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -519,7 +606,7 @@ export const AuctionDashboardPage: React.FC = () => {
           <div className="panel-card" style={{ flex: '1 1 400px', maxWidth: '600px' }}>
             <div className="panel-header" style={{ background: 'var(--bg-panel-alt)' }}>
               <Gavel size={18} />
-              <span style={{ fontWeight: 'bold' }}>LIVE BID ENTRY - ROUND {round}</span>
+              <span style={{ fontWeight: 'bold' }}>LIVE BID ENTRY</span>
             </div>
             
             <div style={{ padding: '2rem' }}>
@@ -538,7 +625,7 @@ export const AuctionDashboardPage: React.FC = () => {
                   />
                   {foundTrader && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', gap: '1rem' }}>
-                      <span>Remaining Corpus: <strong style={{ color: foundTrader.remainingCorpus < 500000 ? '#eab308' : 'inherit' }}>{formatCurrency(foundTrader.remainingCorpus)}</strong></span>
+                      <span>Remaining Corpus: <strong style={{ color: foundTrader.remainingCorpus <= 500000 ? '#eab308' : 'inherit' }}>{formatCurrency(foundTrader.remainingCorpus)}</strong></span>
                       <span>Portfolio Value: <strong>{formatCurrency(foundTrader.totalPortfolioValue)}</strong></span>
                     </div>
                   )}
@@ -589,13 +676,12 @@ export const AuctionDashboardPage: React.FC = () => {
                   <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>₹</span>
                     <input 
-                      type="number" 
+                      type="text" 
                       className="form-input"
                       value={bidForm.bidAmount} 
-                      onChange={e => setBidForm({...bidForm, bidAmount: e.target.value})} 
+                      onChange={e => setBidForm({...bidForm, bidAmount: formatIndianNumber(e.target.value)})} 
                       placeholder="Amount"
                       required
-                      min="1"
                       style={{ paddingLeft: '2rem' }}
                     />
                   </div>
@@ -609,10 +695,10 @@ export const AuctionDashboardPage: React.FC = () => {
                 <button 
                   type="submit" 
                   className="btn btn-primary"
-                  disabled={loading || isInsufficient || !foundSecurity}
+                  disabled={loading || isInsufficient || !foundSecurity || auctionState !== 'RUNNING'}
                   style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', marginTop: '1rem' }}
                 >
-                  {loading ? 'Processing...' : 'Submit Bid'}
+                  {loading ? 'Processing...' : 'Submit Live Bid'}
                 </button>
               </form>
             </div>
@@ -622,7 +708,7 @@ export const AuctionDashboardPage: React.FC = () => {
           <div className="panel-card" style={{ flex: '1 1 400px', maxWidth: '600px' }}>
             <div className="panel-header" style={{ background: 'var(--bg-panel-alt)' }}>
               <AlertCircle size={18} color="#3b82f6" />
-              <span style={{ fontWeight: 'bold', color: '#3b82f6' }}>ENVELOPE ENTRY - ROUND {round}</span>
+              <span style={{ fontWeight: 'bold', color: '#3b82f6' }}>ENVELOPE BID ENTRY</span>
             </div>
             
             <div style={{ padding: '2rem' }}>
@@ -637,32 +723,78 @@ export const AuctionDashboardPage: React.FC = () => {
                     placeholder="e.g. TR01"
                     required
                   />
+                  {envForm.traderId && traders.find(t => t.traderId === envForm.traderId.toUpperCase()) && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      Remaining Corpus: <strong style={{ color: traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus <= 500000 ? '#eab308' : 'inherit' }}>{formatCurrency(traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus)}</strong>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
                   <label className="form-label">Envelope Code</label>
                   <input 
-                    type="number" 
+                    type="text" 
                     className="form-input"
-                    value={envForm.envelopeId} 
-                    onChange={e => setEnvForm({...envForm, envelopeId: e.target.value})} 
-                    placeholder="e.g. 5"
+                    value={envForm.envelopeCode} 
+                    onChange={e => setEnvForm({...envForm, envelopeCode: e.target.value.toUpperCase()})} 
+                    placeholder="e.g. ENV-01"
                     required
-                    style={{ marginBottom: '1rem' }}
                   />
+                  {envForm.envelopeCode && (
+                    <div style={{ 
+                      marginTop: '0.5rem', 
+                      padding: '0.75rem', 
+                      borderRadius: '6px', 
+                      backgroundColor: envelopes.find(e => e.envelope_code === envForm.envelopeCode) ? 'rgba(59, 130, 246, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      border: `1px solid ${envelopes.find(e => e.envelope_code === envForm.envelopeCode) ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.9rem'
+                    }}>
+                      {envelopes.find(e => e.envelope_code === envForm.envelopeCode) ? (
+                        <>
+                          <CheckCircle size={16} color="#3b82f6" />
+                          <span style={{ color: '#3b82f6', fontWeight: 600 }}>{envelopes.find(e => e.envelope_code === envForm.envelopeCode)?.envelope_name}</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={16} color="#ef4444" />
+                          <span style={{ color: '#ef4444' }}>Envelope not found</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)', marginBottom: '1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                  Submit an envelope to apply positive or negative effects directly to a trader's portfolio.
+                <div className="form-group">
+                  <label className="form-label">Bid Amount</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>₹</span>
+                    <input 
+                      type="text" 
+                      className="form-input"
+                      value={envForm.bidAmount} 
+                      onChange={e => setEnvForm({...envForm, bidAmount: formatIndianNumber(e.target.value)})} 
+                      placeholder="Amount"
+                      required
+                      style={{ paddingLeft: '2rem' }}
+                    />
+                  </div>
+                  {envForm.traderId && traders.find(t => t.traderId === envForm.traderId.toUpperCase()) && envForm.bidAmount && parseFloat(envForm.bidAmount.replace(/,/g, '')) > traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus && (
+                    <div style={{ marginTop: '0.5rem', color: '#ef4444', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <AlertCircle size={14} /> Insufficient remaining corpus
+                    </div>
+                  )}
                 </div>
 
                 <button 
                   type="submit" 
                   className="btn btn-outline"
-                  disabled={loading || !envForm.traderId || !envForm.envelopeId}
-                  style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', borderColor: 'rgba(59, 130, 246, 0.5)', color: '#3b82f6' }}
+                  disabled={loading || !envForm.traderId || !envForm.envelopeCode || !envForm.bidAmount || auctionState !== 'RUNNING' || (envForm.traderId && traders.find(t => t.traderId === envForm.traderId.toUpperCase()) && envForm.bidAmount ? parseFloat(envForm.bidAmount.replace(/,/g, '')) > traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus : false)}
+                  style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', borderColor: 'rgba(59, 130, 246, 0.5)', color: '#3b82f6', marginTop: '1rem' }}
                 >
-                  {loading ? 'Processing...' : 'Apply Envelope Effect'}
+                  {loading ? 'Processing...' : 'Submit Envelope Bid'}
                 </button>
               </form>
             </div>
@@ -741,8 +873,7 @@ export const AuctionDashboardPage: React.FC = () => {
                                   <th style={{ textAlign: 'right' }}>Return</th>
                                   <th style={{ textAlign: 'right' }}>Current Value</th>
                                   <th style={{ textAlign: 'right' }}>Gain/Loss</th>
-                                  <th style={{ textAlign: 'center' }}>Round</th>
-                                  <th style={{ textAlign: 'center' }}>Env</th>
+                                  <th style={{ textAlign: 'center' }}>Env Code</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -757,8 +888,7 @@ export const AuctionDashboardPage: React.FC = () => {
                                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: h.gainLoss >= 0 ? '#10b981' : '#ef4444' }}>
                                       {h.gainLoss > 0 ? '+' : ''}{formatCurrency(h.gainLoss)}
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>{h.round}</td>
-                                    <td style={{ textAlign: 'center' }}>{h.envelopeId > 0 ? h.envelopeId : '-'}</td>
+                                    <td style={{ textAlign: 'center', color: h.envelopeCode ? '#eab308' : 'var(--text-muted)' }}>{h.envelopeCode || '-'}</td>
                                   </tr>
                                 ))}
                                 {(!selectedTraderDetails.holdings || selectedTraderDetails.holdings.length === 0) && (
@@ -815,7 +945,7 @@ export const AuctionDashboardPage: React.FC = () => {
                       <td style={{ fontFamily: 'var(--font-mono)' }}>{log.id}</td>
                       <td style={{ fontWeight: 'bold' }}>{log.traderId || '-'}</td>
                       <td>{secName}</td>
-                      <td>{log.envelopeId ? log.envelopeId : '-'}</td>
+                      <td style={{ color: log.envelopeCode ? '#eab308' : 'inherit' }}>{log.envelopeCode ? log.envelopeCode : '-'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{log.bidAmount ? formatCurrency(log.bidAmount) : '-'}</td>
                       <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
                       <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
