@@ -66,6 +66,7 @@ export const AuctionDashboardPage: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [selectedTraderId, setSelectedTraderId] = useState<string>('');
   const [selectedTraderDetails, setSelectedTraderDetails] = useState<TraderPortfolio | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
 
   // Forms State
   const [bidForm, setBidForm] = useState({ traderId: '', securityCode: '', bidAmount: '', envelopeId: '' });
@@ -79,9 +80,15 @@ export const AuctionDashboardPage: React.FC = () => {
       const res = await fetch('/api/auction/securities', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) setSecurities(await res.json());
-    } catch (e) {
-      console.error(e);
+      if (res.ok) {
+        setSecurities(await res.json());
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to load securities: ${res.status}`);
+      }
+    } catch (e: any) {
+      console.error('fetchSecurities error:', e);
+      setInitError(e.message || 'Network error fetching securities');
     }
   };
 
@@ -94,10 +101,14 @@ export const AuctionDashboardPage: React.FC = () => {
         const data = await res.json();
         setTraders(data);
         setIsInitialized(data.length > 0);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to load traders: ${res.status}`);
       }
-    } catch (e) {
-      console.error(e);
-      setIsInitialized(false);
+    } catch (e: any) {
+      console.error('fetchTraders error:', e);
+      setInitError(e.message || 'Network error fetching traders');
+      setIsInitialized(null); // Keep it null so it shows error, not setup
     }
   };
 
@@ -262,6 +273,24 @@ export const AuctionDashboardPage: React.FC = () => {
   const normalizedTraderId = bidForm.traderId.toUpperCase();
   const foundTrader = traders.find(t => t.traderId === normalizedTraderId);
   const isInsufficient = foundTrader && bidForm.bidAmount ? parseFloat(bidForm.bidAmount) > foundTrader.remainingCorpus : false;
+
+  if (initError) {
+    return (
+      <div className="admin-container">
+        <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: 'var(--bg-panel)', borderRadius: '12px', marginTop: '2rem' }}>
+          <AlertCircle size={48} style={{ color: '#ef4444', marginBottom: '1rem' }} />
+          <h3 style={{ color: 'var(--text-bright)', marginBottom: '0.5rem' }}>Failed to load Auction Module</h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>{initError}</p>
+          <button 
+            onClick={() => { setInitError(null); fetchSecurities(); fetchTraders(); }} 
+            className="btn btn-primary"
+          >
+            Retry Loading
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isInitialized === null) {
     return <div className="admin-container"><div style={{ padding: '2rem', textAlign: 'center' }}>Loading Auction Module...</div></div>;
