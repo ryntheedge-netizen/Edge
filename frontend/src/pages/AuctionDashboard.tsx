@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Gavel, TrendingUp, Users, AlertCircle, ShieldAlert, FileText, CheckCircle } from 'lucide-react';
+import { Gavel, TrendingUp, Users, AlertCircle, ShieldAlert, FileText, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface Security {
   code: string;
@@ -70,7 +70,6 @@ export const AuctionDashboardPage: React.FC = () => {
 
   // Forms State
   const [bidForm, setBidForm] = useState({ traderId: '', securityCode: '', bidAmount: '', envelopeId: '' });
-  const [envForm, setEnvForm] = useState({ traderId: '', envelopeId: '' });
   const [setupForm, setSetupForm] = useState({ numTraders: '', startingCorpus: '2000000' });
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -188,8 +187,7 @@ export const AuctionDashboardPage: React.FC = () => {
     }
   };
 
-  const handleEnvSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEnvSubmit = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/auction/envelope', {
@@ -199,7 +197,8 @@ export const AuctionDashboardPage: React.FC = () => {
           'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({
-          ...envForm,
+          traderId: bidForm.traderId,
+          envelopeId: bidForm.envelopeId,
           auctionRound: round
         })
       });
@@ -207,7 +206,7 @@ export const AuctionDashboardPage: React.FC = () => {
       const data = await res.json();
       if (res.ok) {
         showSuccess('Envelope applied successfully');
-        setEnvForm({ traderId: '', envelopeId: '' });
+        setBidForm({ ...bidForm, envelopeId: '' });
       } else {
         showError(data.error || 'Failed to apply envelope');
       }
@@ -421,7 +420,6 @@ export const AuctionDashboardPage: React.FC = () => {
         <button style={tabStyle('overview')} onClick={() => setActiveTab('overview')}><TrendingUp size={16}/> Overview</button>
         <button style={tabStyle('bid')} onClick={() => setActiveTab('bid')}><Gavel size={16}/> Bid Entry</button>
         <button style={tabStyle('portfolio')} onClick={() => setActiveTab('portfolio')}><Users size={16}/> Trader Portfolios</button>
-        <button style={tabStyle('envelope')} onClick={() => setActiveTab('envelope')}><AlertCircle size={16}/> Apply Envelope</button>
         <button style={tabStyle('audit')} onClick={() => setActiveTab('audit')}><FileText size={16}/> Audit Log</button>
       </div>
 
@@ -476,8 +474,8 @@ export const AuctionDashboardPage: React.FC = () => {
                 style={{ marginBottom: '1rem', maxWidth: '400px' }}
               />
               <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                <table className="table">
-                  <thead>
+                <table className="custom-table">
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
                       <th style={{ width: '100px' }}>Code</th>
                       <th>Security Name</th>
@@ -604,15 +602,27 @@ export const AuctionDashboardPage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Envelope ID (Optional)</label>
+                <div className="form-group" style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3b82f6' }}>
+                    <AlertCircle size={14} /> Envelope Controls
+                  </label>
                   <input 
                     type="number" 
                     className="form-input"
                     value={bidForm.envelopeId} 
                     onChange={e => setBidForm({...bidForm, envelopeId: e.target.value})} 
-                    placeholder="Leave blank for none (0)"
+                    placeholder="Envelope ID (Optional)"
+                    style={{ marginBottom: '0.75rem' }}
                   />
+                  <button 
+                    type="button" 
+                    onClick={handleEnvSubmit}
+                    className="btn btn-outline"
+                    disabled={loading || !bidForm.traderId || !bidForm.envelopeId}
+                    style={{ width: '100%', padding: '0.65rem', fontSize: '0.9rem', borderColor: 'rgba(59, 130, 246, 0.5)', color: '#3b82f6' }}
+                  >
+                    Apply Envelope Effect Only
+                  </button>
                 </div>
 
                 <button 
@@ -631,194 +641,113 @@ export const AuctionDashboardPage: React.FC = () => {
 
       {/* PORTFOLIO TAB */}
       {activeTab === 'portfolio' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          <div className="panel-card">
-            <div className="panel-header">
+        <div className="panel-card">
+          <div className="panel-header" style={{ marginBottom: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Users size={18} />
               <span style={{ fontWeight: 'bold' }}>TRADER PORTFOLIOS</span>
             </div>
-            
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Trader</th>
-                    <th style={{ textAlign: 'right' }}>Starting Corpus</th>
-                    <th style={{ textAlign: 'right' }}>Remaining Corpus</th>
-                    <th style={{ textAlign: 'right' }}>Holdings Value</th>
-                    <th style={{ textAlign: 'right' }}>Portfolio Value</th>
-                    <th style={{ textAlign: 'right' }}>Difference</th>
-                    <th style={{ textAlign: 'center' }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {traders.map(t => (
-                    <tr key={t.traderId} style={{ 
-                      backgroundColor: t.isLowCorpus ? 'rgba(234, 179, 8, 0.1)' : 'transparent'
-                    }}>
-                      <td style={{ fontWeight: 'bold' }}>{t.traderId}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(t.startingCorpus)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: t.isLowCorpus ? 'bold' : 'normal', color: t.isLowCorpus ? '#eab308' : 'inherit' }}>
-                        {formatCurrency(t.remainingCorpus)}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(t.currentHoldingsValue)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatCurrency(t.totalPortfolioValue)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: t.difference >= 0 ? '#10b981' : '#ef4444' }}>
-                        {t.difference > 0 ? '+' : ''}{formatCurrency(t.difference)}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button 
-                          className="btn btn-primary" 
-                          style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
-                          onClick={() => {
-                            setSelectedTraderId(t.traderId);
-                            // smooth scroll down if needed, but flex layout should show it
-                          }}
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {traders.length === 0 && (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No traders found</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
           </div>
           
-          {selectedTraderId && selectedTraderDetails && (
-            <div className="panel-card" style={{ borderTop: '4px solid var(--accent-primary)' }}>
-              <div className="panel-header" style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <FileText size={18} />
-                  <span style={{ fontWeight: 'bold' }}>PORTFOLIO DETAILS: {selectedTraderDetails.traderId}</span>
-                </div>
-                <button onClick={() => setSelectedTraderId('')} className="btn" style={{ padding: '0.25rem 0.5rem', background: 'transparent' }}>Close</button>
-              </div>
-              
-              <div style={{ padding: '1.5rem' }}>
-                <div className="admin-grid" style={{ marginBottom: '2rem' }}>
-                  <div style={{ background: 'var(--bg-panel-alt)', padding: '1rem', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Starting Corpus</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{formatCurrency(selectedTraderDetails.startingCorpus)}</div>
-                  </div>
-                  <div style={{ background: 'var(--bg-panel-alt)', padding: '1rem', borderRadius: '8px', border: selectedTraderDetails.isLowCorpus ? '1px solid rgba(234, 179, 8, 0.5)' : 'none' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Remaining Corpus</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: selectedTraderDetails.isLowCorpus ? '#eab308' : 'inherit' }}>{formatCurrency(selectedTraderDetails.remainingCorpus)}</div>
-                  </div>
-                  <div style={{ background: 'var(--bg-panel-alt)', padding: '1rem', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Holdings Value</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{formatCurrency(selectedTraderDetails.currentHoldingsValue)}</div>
-                  </div>
-                  <div style={{ background: 'var(--bg-panel-alt)', padding: '1rem', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Gain/Loss</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: selectedTraderDetails.difference >= 0 ? '#10b981' : '#ef4444' }}>
-                      {selectedTraderDetails.difference > 0 ? '+' : ''}{formatCurrency(selectedTraderDetails.difference)}
-                    </div>
-                  </div>
-                </div>
-                
-                <h4 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Acquired Holdings</h4>
-                <div className="table-container">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Security</th>
-                        <th style={{ textAlign: 'right' }}>Bid Value</th>
-                        <th style={{ textAlign: 'right' }}>Return</th>
-                        <th style={{ textAlign: 'right' }}>Current Value</th>
-                        <th style={{ textAlign: 'right' }}>Gain/Loss</th>
-                        <th style={{ textAlign: 'center' }}>Round</th>
-                        <th style={{ textAlign: 'center' }}>Env</th>
+          <div className="table-container">
+            <table className="custom-table">
+              <thead>
+                <tr>
+                  <th>Trader ID</th>
+                  <th style={{ textAlign: 'right' }}>Starting Corpus</th>
+                  <th style={{ textAlign: 'right' }}>Cash Balance</th>
+                  <th style={{ textAlign: 'right' }}>Holdings Value</th>
+                  <th style={{ textAlign: 'right' }}>Portfolio Value</th>
+                  <th style={{ textAlign: 'right' }}>Difference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {traders.map(t => (
+                  <React.Fragment key={t.traderId}>
+                    <tr 
+                      style={{ 
+                        cursor: 'pointer', 
+                        backgroundColor: t.isLowCorpus ? 'rgba(234, 179, 8, 0.1)' : 'transparent',
+                        borderBottom: selectedTraderId === t.traderId ? 'none' : undefined
+                      }}
+                      onClick={() => {
+                        if (selectedTraderId === t.traderId) {
+                          setSelectedTraderId('');
+                          setSelectedTraderDetails(null);
+                        } else {
+                          setSelectedTraderId(t.traderId);
+                        }
+                      }}
+                    >
+                      <td style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {selectedTraderId === t.traderId ? <ChevronDown size={18} color="#94a3b8" /> : <ChevronRight size={18} color="#94a3b8" />}
+                        {t.traderId}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(t.startingCorpus)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: t.isLowCorpus ? 'bold' : 'normal', color: t.isLowCorpus ? '#eab308' : 'inherit' }}>
+                        {formatCurrency(t.remainingCorpus)}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(t.currentHoldingsValue)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{formatCurrency(t.totalPortfolioValue)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: t.difference >= 0 ? '#10b981' : '#ef4444' }}>
+                        {t.difference > 0 ? '+' : ''}{formatCurrency(t.difference)}
+                      </td>
+                    </tr>
+                    
+                    {/* Expanded details */}
+                    {selectedTraderId === t.traderId && selectedTraderDetails && (
+                      <tr style={{ backgroundColor: '#111726' }}>
+                        <td colSpan={6} style={{ padding: 0, borderBottom: '1px solid var(--border-color)' }}>
+                          <div style={{ padding: '0 2rem 2rem 3rem', borderLeft: '2px solid #f59e0b', margin: '1rem 0' }}>
+                            <h4 style={{ margin: '0 0 1rem 0', color: '#f59e0b', fontSize: '0.8rem', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <ChevronDown size={14} /> ACQUIRED HOLDINGS
+                            </h4>
+                            <table className="custom-table" style={{ background: 'transparent' }}>
+                              <thead>
+                                <tr>
+                                  <th>Security</th>
+                                  <th style={{ textAlign: 'right' }}>Bid Value</th>
+                                  <th style={{ textAlign: 'right' }}>Return</th>
+                                  <th style={{ textAlign: 'right' }}>Current Value</th>
+                                  <th style={{ textAlign: 'right' }}>Gain/Loss</th>
+                                  <th style={{ textAlign: 'center' }}>Round</th>
+                                  <th style={{ textAlign: 'center' }}>Env</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedTraderDetails.holdings && selectedTraderDetails.holdings.map(h => (
+                                  <tr key={h.id}>
+                                    <td style={{ fontWeight: 'bold', color: '#3b82f6', letterSpacing: '0.05em' }}>{h.securityName} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({h.securityCode})</span></td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(h.acquisitionPrice)}</td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: h.currentReturnPct >= 0 ? '#10b981' : '#ef4444' }}>
+                                      {h.currentReturnPct > 0 ? '+' : ''}{h.currentReturnPct.toFixed(2)}%
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{formatCurrency(h.currentValue)}</td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: h.gainLoss >= 0 ? '#10b981' : '#ef4444' }}>
+                                      {h.gainLoss > 0 ? '+' : ''}{formatCurrency(h.gainLoss)}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>{h.round}</td>
+                                    <td style={{ textAlign: 'center' }}>{h.envelopeId > 0 ? h.envelopeId : '-'}</td>
+                                  </tr>
+                                ))}
+                                {(!selectedTraderDetails.holdings || selectedTraderDetails.holdings.length === 0) && (
+                                  <tr>
+                                    <td colSpan={7} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No active holdings</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {selectedTraderDetails.holdings && selectedTraderDetails.holdings.map(h => (
-                        <tr key={h.id}>
-                          <td style={{ fontWeight: 'bold' }}>{h.securityCode}</td>
-                          <td>{h.securityName}</td>
-                          <td style={{ textAlign: 'right' }}>{formatCurrency(h.acquisitionPrice)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 'bold', color: h.currentReturnPct >= 0 ? '#10b981' : '#ef4444' }}>
-                            {h.currentReturnPct > 0 ? '+' : ''}{h.currentReturnPct.toFixed(2)}%
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatCurrency(h.currentValue)}</td>
-                          <td style={{ textAlign: 'right', color: h.gainLoss >= 0 ? '#10b981' : '#ef4444' }}>
-                            {h.gainLoss > 0 ? '+' : ''}{formatCurrency(h.gainLoss)}
-                          </td>
-                          <td style={{ textAlign: 'center' }}>{h.round}</td>
-                          <td style={{ textAlign: 'center' }}>{h.envelopeId > 0 ? h.envelopeId : '-'}</td>
-                        </tr>
-                      ))}
-                      {(!selectedTraderDetails.holdings || selectedTraderDetails.holdings.length === 0) && (
-                        <tr>
-                          <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No holdings acquired yet.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ENVELOPE TAB */}
-      {activeTab === 'envelope' && (
-        <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-          <div className="panel-card">
-            <div className="panel-header" style={{ background: 'var(--bg-panel-alt)' }}>
-              <AlertCircle size={18} />
-              <span style={{ fontWeight: 'bold' }}>APPLY ENVELOPE - ROUND {round}</span>
-            </div>
-            
-            <div style={{ padding: '2rem' }}>
-              <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '1rem', borderRadius: '6px', marginBottom: '1.5rem', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: '0.9rem', display: 'flex', gap: '0.75rem' }}>
-                <AlertCircle size={20} style={{ flexShrink: 0 }} />
-                <div>
-                  <strong>Information:</strong> The exact envelope consequences are pending. Applying an envelope here creates the audit record and establishes the architecture.
-                </div>
-              </div>
-
-              <form onSubmit={handleEnvSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Trader ID</label>
-                  <input 
-                    type="text" 
-                    className="form-input"
-                    value={envForm.traderId} 
-                    onChange={e => setEnvForm({...envForm, traderId: e.target.value})} 
-                    placeholder="e.g. TR01"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Envelope ID</label>
-                  <input 
-                    type="number" 
-                    className="form-input"
-                    value={envForm.envelopeId} 
-                    onChange={e => setEnvForm({...envForm, envelopeId: e.target.value})} 
-                    placeholder="Envelope ID"
-                    required
-                    min="1"
-                  />
-                </div>
-
-                <button 
-                  type="submit" 
-                  className="btn"
-                  disabled={loading}
-                  style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', marginTop: '1rem', background: 'var(--accent-secondary)', color: 'white' }}
-                >
-                  {loading ? 'Processing...' : 'Apply Envelope'}
-                </button>
-              </form>
-            </div>
+                    )}
+                  </React.Fragment>
+                ))}
+                {traders.length === 0 && (
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No traders found</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -832,7 +761,7 @@ export const AuctionDashboardPage: React.FC = () => {
           </div>
           
           <div className="table-container">
-            <table className="table">
+            <table className="custom-table">
               <thead>
                 <tr>
                   <th style={{ width: '180px' }}>Timestamp</th>
