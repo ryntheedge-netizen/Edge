@@ -218,18 +218,8 @@ export async function seedDefaultData(client?: PoolClient) {
 export async function initDatabase() {
   const client = await pool.connect();
   try {
-    let schemaPath = path.resolve(__dirname, 'schema.sql');
-    if (!fs.existsSync(schemaPath)) {
-      schemaPath = path.resolve(__dirname, '../src/db/schema.sql');
-    }
-    if (!fs.existsSync(schemaPath)) {
-      schemaPath = path.resolve(__dirname, '../../src/db/schema.sql');
-    }
-
-    if (fs.existsSync(schemaPath)) {
-      const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-      await client.query(schemaSql);
-    }
+    const { schemaSql } = await import('./schema');
+    await client.query(schemaSql);
 
     const existingEvent = await client.query(`SELECT id FROM events ORDER BY id ASC LIMIT 1`);
     if (existingEvent.rows.length === 0) {
