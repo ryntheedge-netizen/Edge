@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
