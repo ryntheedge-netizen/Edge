@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pool, { withTransaction } from '../db/database';
-import request from 'supertest';
-import app from '../server';
 
 describe('Auction Module Core Tests', () => {
   beforeAll(async () => {
