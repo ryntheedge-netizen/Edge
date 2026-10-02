@@ -203,6 +203,17 @@ export const AuctionDashboardPage: React.FC = () => {
     }
   }, [selectedTraderId]);
 
+  const normalizeTraderId = (input: string) => {
+    if (!input) return input;
+    const val = input.trim().toUpperCase();
+    const numMatch = val.match(/\d+/);
+    if (numMatch) {
+      const num = parseInt(numMatch[0], 10);
+      return `TR${num.toString().padStart(2, '0')}`;
+    }
+    return val;
+  };
+
   const handleBidSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -344,9 +355,13 @@ export const AuctionDashboardPage: React.FC = () => {
   const foundSecurity = securities.find(s => s.code === normalizedSecCode);
   
   // Trader context logic for bid entry
-  const normalizedTraderId = bidForm.traderId.toUpperCase();
+  const normalizedTraderId = normalizeTraderId(bidForm.traderId);
   const foundTrader = traders.find(t => t.traderId === normalizedTraderId);
-  const isInsufficient = foundTrader && bidForm.bidAmount ? parseFloat(bidForm.bidAmount) > foundTrader.remainingCorpus : false;
+  const isInsufficient = foundTrader && bidForm.bidAmount ? parseFloat(bidForm.bidAmount.replace(/,/g, '')) > foundTrader.remainingCorpus : false;
+
+  const envNormalizedTraderId = normalizeTraderId(envForm.traderId);
+  const foundEnvTrader = traders.find(t => t.traderId === envNormalizedTraderId);
+  const isEnvInsufficient = foundEnvTrader && envForm.bidAmount ? parseFloat(envForm.bidAmount.replace(/,/g, '')) > foundEnvTrader.remainingCorpus : false;
 
   if (initError) {
     return (
@@ -511,6 +526,7 @@ export const AuctionDashboardPage: React.FC = () => {
         <button style={tabStyle('bid')} onClick={() => setActiveTab('bid')}><Gavel size={16}/> Bid Entry</button>
         <button style={tabStyle('portfolio')} onClick={() => setActiveTab('portfolio')}><Users size={16}/> Trader Portfolios</button>
         <button style={tabStyle('audit')} onClick={() => setActiveTab('audit')}><FileText size={16}/> Audit Log</button>
+        <button style={tabStyle('envelope')} onClick={() => setActiveTab('envelope')}><ShieldAlert size={16}/> Master Data</button>
       </div>
 
       {/* OVERVIEW TAB */}
@@ -588,6 +604,55 @@ export const AuctionDashboardPage: React.FC = () => {
                       <tr>
                         <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                           Loading securities...
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ENVELOPES MASTER TAB */}
+      {activeTab === 'envelope' && (
+        <div className="admin-grid" style={{ gridTemplateColumns: '1fr', gap: '1.5rem', maxWidth: '1000px', margin: '0 auto' }}>
+          <div className="panel-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-header">
+              <ShieldAlert size={18} />
+              <span style={{ fontWeight: 'bold' }}>ENVELOPE MASTER</span>
+            </div>
+            <div style={{ padding: '1rem' }}>
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Search envelopes by code or name..." 
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                style={{ marginBottom: '1rem', maxWidth: '400px' }}
+              />
+              <div className="table-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                <table className="custom-table">
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr>
+                      <th style={{ width: '100px' }}>Code</th>
+                      <th>Envelope Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {envelopes
+                      .filter(e => e.envelope_code.includes(searchFilter) || e.envelope_name.toLowerCase().includes(searchFilter.toLowerCase()))
+                      .map(e => (
+                      <tr key={e.envelope_code}>
+                        <td style={{ fontWeight: 'bold', color: '#eab308' }}>{e.envelope_code}</td>
+                        <td style={{ fontWeight: 'bold' }}>{e.envelope_name}</td>
+                      </tr>
+                    ))}
+                    {envelopes.length === 0 && (
+                      <tr>
+                        <td colSpan={2} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                          Loading envelopes...
                         </td>
                       </tr>
                     )}
@@ -723,9 +788,9 @@ export const AuctionDashboardPage: React.FC = () => {
                     placeholder="e.g. TR01"
                     required
                   />
-                  {envForm.traderId && traders.find(t => t.traderId === envForm.traderId.toUpperCase()) && (
+                  {envForm.traderId && foundEnvTrader && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      Remaining Corpus: <strong style={{ color: traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus <= 500000 ? '#eab308' : 'inherit' }}>{formatCurrency(traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus)}</strong>
+                      Remaining Corpus: <strong style={{ color: foundEnvTrader.remainingCorpus <= 500000 ? '#eab308' : 'inherit' }}>{formatCurrency(foundEnvTrader.remainingCorpus)}</strong>
                     </div>
                   )}
                 </div>
@@ -781,7 +846,7 @@ export const AuctionDashboardPage: React.FC = () => {
                       style={{ paddingLeft: '2rem' }}
                     />
                   </div>
-                  {envForm.traderId && traders.find(t => t.traderId === envForm.traderId.toUpperCase()) && envForm.bidAmount && parseFloat(envForm.bidAmount.replace(/,/g, '')) > traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus && (
+                  {isEnvInsufficient && (
                     <div style={{ marginTop: '0.5rem', color: '#ef4444', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <AlertCircle size={14} /> Insufficient remaining corpus
                     </div>
@@ -791,7 +856,7 @@ export const AuctionDashboardPage: React.FC = () => {
                 <button 
                   type="submit" 
                   className="btn btn-outline"
-                  disabled={loading || !envForm.traderId || !envForm.envelopeCode || !envForm.bidAmount || auctionState !== 'RUNNING' || (envForm.traderId && traders.find(t => t.traderId === envForm.traderId.toUpperCase()) && envForm.bidAmount ? parseFloat(envForm.bidAmount.replace(/,/g, '')) > traders.find(t => t.traderId === envForm.traderId.toUpperCase())!.remainingCorpus : false)}
+                  disabled={loading || !envForm.traderId || !envForm.envelopeCode || !envForm.bidAmount || auctionState !== 'RUNNING' || isEnvInsufficient}
                   style={{ width: '100%', padding: '0.85rem', fontSize: '1rem', borderColor: 'rgba(59, 130, 246, 0.5)', color: '#3b82f6', marginTop: '1rem' }}
                 >
                   {loading ? 'Processing...' : 'Submit Envelope Bid'}

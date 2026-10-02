@@ -289,6 +289,19 @@ CREATE TABLE IF NOT EXISTS edge_id_templates (
 -- AUCTION MODULE SCHEMA
 -- ==========================================
 
+CREATE TABLE IF NOT EXISTS auction_state (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'NOT_STARTED' CHECK(status IN ('NOT_STARTED', 'RUNNING', 'PAUSED', 'ENDED')),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auction_master_envelopes (
+    id SERIAL PRIMARY KEY,
+    envelope_code TEXT NOT NULL UNIQUE,
+    envelope_name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS auction_securities (
     id SERIAL PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
@@ -306,11 +319,10 @@ CREATE TABLE IF NOT EXISTS auction_traders (
 
 CREATE TABLE IF NOT EXISTS auction_bids (
     id SERIAL PRIMARY KEY,
-    auction_round INTEGER NOT NULL CHECK(auction_round IN (1, 2)),
     trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
     security_id INTEGER NOT NULL REFERENCES auction_securities(id),
     bid_amount NUMERIC(15,2) NOT NULL,
-    envelope_id INTEGER DEFAULT 0,
+    envelope_code TEXT REFERENCES auction_master_envelopes(envelope_code) ON DELETE SET NULL,
     status TEXT NOT NULL DEFAULT 'SUCCESS' CHECK(status IN ('SUCCESS', 'REJECTED')),
     rejection_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -318,18 +330,16 @@ CREATE TABLE IF NOT EXISTS auction_bids (
 
 CREATE TABLE IF NOT EXISTS auction_holdings (
     id SERIAL PRIMARY KEY,
-    auction_round INTEGER NOT NULL CHECK(auction_round IN (1, 2)),
     trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
     security_id INTEGER NOT NULL REFERENCES auction_securities(id),
     acquisition_price NUMERIC(15,2) NOT NULL,
-    envelope_id INTEGER DEFAULT 0,
+    envelope_code TEXT REFERENCES auction_master_envelopes(envelope_code) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS auction_transfers (
     id SERIAL PRIMARY KEY,
-    auction_round INTEGER NOT NULL CHECK(auction_round IN (1, 2)),
     holding_id INTEGER NOT NULL REFERENCES auction_holdings(id) ON DELETE CASCADE,
     from_trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
     to_trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
@@ -339,9 +349,8 @@ CREATE TABLE IF NOT EXISTS auction_transfers (
 
 CREATE TABLE IF NOT EXISTS auction_envelopes_applied (
     id SERIAL PRIMARY KEY,
-    auction_round INTEGER NOT NULL CHECK(auction_round IN (1, 2)),
     trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
-    envelope_id INTEGER NOT NULL,
+    envelope_code TEXT REFERENCES auction_master_envelopes(envelope_code) ON DELETE SET NULL,
     details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -353,8 +362,7 @@ CREATE TABLE IF NOT EXISTS auction_audit_logs (
     trader_id TEXT,
     security_id INTEGER,
     bid_amount NUMERIC(15,2),
-    envelope_id INTEGER,
-    auction_round INTEGER,
+    envelope_code TEXT,
     details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
