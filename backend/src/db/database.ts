@@ -216,24 +216,23 @@ export async function seedDefaultData(client?: PoolClient) {
 }
 
 export async function initDatabase() {
-  if (process.env.VERCEL) {
-    console.log('[DB] Skipping database initialization script on Vercel cold start.');
-    return;
-  }
-
   const client = await pool.connect();
   try {
-    let schemaPath = path.resolve(__dirname, 'schema.sql');
-    if (!fs.existsSync(schemaPath)) {
-      schemaPath = path.resolve(__dirname, '../src/db/schema.sql');
-    }
-    if (!fs.existsSync(schemaPath)) {
-      schemaPath = path.resolve(__dirname, '../../src/db/schema.sql');
-    }
+    const { schemaSql } = await import('./schema');
+    await client.query(schemaSql);
 
-    if (fs.existsSync(schemaPath)) {
-      const schemaSql = fs.readFileSync(schemaPath, 'utf8');
-      await client.query(schemaSql);
+    // Ensure foreign keys correctly point to auction_securities instead of securities 
+    // due to legacy schema bug that persists on cloned Neon DB branches
+    try {
+      await client.query(`
+        ALTER TABLE auction_bids DROP CONSTRAINT IF EXISTS auction_bids_security_id_fkey;
+        ALTER TABLE auction_bids ADD CONSTRAINT auction_bids_security_id_fkey FOREIGN KEY (security_id) REFERENCES auction_securities(id);
+        
+        ALTER TABLE auction_holdings DROP CONSTRAINT IF EXISTS auction_holdings_security_id_fkey;
+        ALTER TABLE auction_holdings ADD CONSTRAINT auction_holdings_security_id_fkey FOREIGN KEY (security_id) REFERENCES auction_securities(id);
+      `);
+    } catch (err) {
+      console.log('[DB] Note: Could not recreate auction foreign keys', err);
     }
 
     const existingEvent = await client.query(`SELECT id FROM events ORDER BY id ASC LIMIT 1`);
@@ -252,6 +251,17 @@ export async function initDatabase() {
     }
 
     await migrateSecurities(undefined, client);
+
+    // Initialize Auction Securities if missing
+    try {
+      const existingSecurities = await client.query('SELECT COUNT(*) FROM auction_securities');
+      if (Number(existingSecurities.rows[0].count) === 0) {
+        const { seedAuctionSecurities } = await import('../scripts/seed_auction_securities');
+        await seedAuctionSecurities(client);
+      }
+    } catch (err) {
+      console.error('[DB] Failed to seed auction securities on init', err);
+    }
 
   } finally {
     client.release();

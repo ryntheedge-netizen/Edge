@@ -1,4 +1,4 @@
--- EDGE PostgreSQL Schema
+export const schemaSql = `-- EDGE PostgreSQL Schema
 
 CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY,
@@ -358,3 +358,4 @@ CREATE TABLE IF NOT EXISTS auction_audit_logs (
     details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+`;
