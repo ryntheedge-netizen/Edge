@@ -14,6 +14,7 @@ import attendanceRoutes from './routes/attendance';
 import jobbersRoutes from './routes/jobbers';
 import brokersRoutes from './routes/brokers';
 import desksRoutes from './routes/desks';
+import auctionRoutes from './routes/auction';
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use('/api/jobbers', jobbersRoutes);
 app.use('/api/brokers', brokersRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/desks', desksRoutes);
+app.use('/api/auction', auctionRoutes);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

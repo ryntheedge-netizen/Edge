@@ -19,6 +19,7 @@ const SuperadminMarketPage = React.lazy(() => import('./pages/SuperadminMarketPa
 const SuperadminAuditLogsPage = React.lazy(() => import('./pages/SuperadminAuditLogsPage').then(module => ({ default: module.SuperadminAuditLogsPage })));
 const QueueManagerPage = React.lazy(() => import('./pages/QueueManagerPage').then(module => ({ default: module.QueueManagerPage })));
 const QueueViewerPage = React.lazy(() => import('./pages/QueueViewerPage').then(module => ({ default: module.QueueViewerPage })));
+const AuctionDashboardPage = React.lazy(() => import('./pages/AuctionDashboard').then(module => ({ default: module.AuctionDashboardPage })));
 
 const MainApp: React.FC = () => {
   const { isAuthenticated, hasPermission } = useAuth();
@@ -167,7 +168,11 @@ const MainApp: React.FC = () => {
 
   if (currentPath === '/auction' || currentPath === '/auction/admin') {
     if (hasPermission('AUCTION_ADMIN')) {
-      return <EdgeLayout title="Auction Admin"><div style={{padding: '2rem'}}>Auction Module (Coming Soon)</div></EdgeLayout>;
+      return (
+        <EdgeLayout title="Auction Admin">
+          <AuctionDashboardPage />
+        </EdgeLayout>
+      );
     }
     return <LoginPage title="AUCTION ADMIN LOGIN" expectedRole="auction_admin" />;
   }
