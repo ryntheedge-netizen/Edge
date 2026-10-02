@@ -539,7 +539,7 @@ export const AuctionDashboardPage: React.FC = () => {
                   {foundTrader && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', gap: '1rem' }}>
                       <span>Remaining Corpus: <strong style={{ color: foundTrader.remainingCorpus < 500000 ? '#eab308' : 'inherit' }}>{formatCurrency(foundTrader.remainingCorpus)}</strong></span>
-                      <span>Holdings Value: <strong>{formatCurrency(foundTrader.currentHoldingsValue)}</strong></span>
+                      <span>Portfolio Value: <strong>{formatCurrency(foundTrader.totalPortfolioValue)}</strong></span>
                     </div>
                   )}
                 </div>
@@ -640,7 +640,7 @@ export const AuctionDashboardPage: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Envelope ID</label>
+                  <label className="form-label">Envelope Code</label>
                   <input 
                     type="number" 
                     className="form-input"
@@ -796,42 +796,35 @@ export const AuctionDashboardPage: React.FC = () => {
               <thead>
                 <tr>
                   <th style={{ width: '180px' }}>Timestamp</th>
-                  <th>Action</th>
-                  <th>Trader</th>
-                  <th>Details</th>
-                  <th style={{ textAlign: 'center' }}>Round</th>
-                  <th>Actor</th>
+                  <th>Trade ID</th>
+                  <th>Trader ID</th>
+                  <th>Sec Name</th>
+                  <th>Envelope Code</th>
+                  <th style={{ textAlign: 'right' }}>Bid Amt</th>
+                  <th style={{ textAlign: 'right' }}>Remaining Corpus</th>
+                  <th style={{ textAlign: 'right' }}>Gain/Loss</th>
+                  <th style={{ textAlign: 'right' }}>Portfolio Value</th>
                 </tr>
               </thead>
               <tbody>
-                {auditLogs.map(log => (
-                  <tr key={log.id}>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(log.timestamp).toLocaleString()}</td>
-                    <td>
-                      <span style={{ 
-                        padding: '0.25rem 0.5rem', 
-                        borderRadius: '4px', 
-                        fontSize: '0.75rem', 
-                        fontWeight: 'bold',
-                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                        color: '#60a5fa'
-                      }}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 'bold' }}>{log.traderId}</td>
-                    <td>
-                      {log.details}
-                      {log.security && <span style={{ marginLeft: '10px', color: 'var(--text-muted)' }}>| Sec: <strong>{log.security}</strong></span>}
-                      {log.bidAmount && <span style={{ marginLeft: '10px', color: 'var(--text-muted)' }}>| Amt: <strong>{formatCurrency(log.bidAmount)}</strong></span>}
-                      {log.envelopeId ? <span style={{ marginLeft: '10px', color: 'var(--text-muted)' }}>| Env: <strong>{log.envelopeId}</strong></span> : ''}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>{log.round}</td>
-                    <td style={{ color: 'var(--text-muted)' }}>{log.auctioneer}</td>
-                  </tr>
-                ))}
+                {auditLogs.map(log => {
+                  const secName = securities.find(s => s.code === log.security)?.name || log.security || '-';
+                  return (
+                    <tr key={log.id}>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(log.timestamp).toLocaleString()}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)' }}>{log.id}</td>
+                      <td style={{ fontWeight: 'bold' }}>{log.traderId || '-'}</td>
+                      <td>{secName}</td>
+                      <td>{log.envelopeId ? log.envelopeId : '-'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{log.bidAmount ? formatCurrency(log.bidAmount) : '-'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
+                    </tr>
+                  );
+                })}
                 {auditLogs.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No audit logs found</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No audit logs found</td></tr>
                 )}
               </tbody>
             </table>
