@@ -98,9 +98,15 @@ export const AuctionDashboardPage: React.FC = () => {
   const fetchEnvelopes = async () => {
     try {
       const res = await fetch('/api/auction/envelopes', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (res.ok) setEnvelopes(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setEnvelopes(data);
+      } else {
+        const errData = await res.json();
+        console.error('Failed to fetch envelopes:', errData);
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Network error fetching envelopes:', e);
     }
   };
 
@@ -194,6 +200,8 @@ export const AuctionDashboardPage: React.FC = () => {
       fetchTraders();
     } else if (activeTab === 'audit') {
       fetchAuditLogs();
+    } else if (activeTab === 'envelope') {
+      fetchEnvelopes();
     }
   }, [activeTab]);
 
@@ -642,7 +650,7 @@ export const AuctionDashboardPage: React.FC = () => {
                   </thead>
                   <tbody>
                     {envelopes
-                      .filter(e => e.envelope_code.includes(searchFilter) || e.envelope_name.toLowerCase().includes(searchFilter.toLowerCase()))
+                      .filter(e => String(e.envelope_code).includes(searchFilter) || String(e.envelope_name).toLowerCase().includes(searchFilter.toLowerCase()))
                       .map(e => (
                       <tr key={e.envelope_code}>
                         <td style={{ fontWeight: 'bold', color: '#eab308' }}>{e.envelope_code}</td>
