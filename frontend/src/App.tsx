@@ -21,6 +21,14 @@ const QueueManagerPage = React.lazy(() => import('./pages/QueueManagerPage').the
 const QueueViewerPage = React.lazy(() => import('./pages/QueueViewerPage').then(module => ({ default: module.QueueViewerPage })));
 const AuctionDashboardPage = React.lazy(() => import('./pages/AuctionDashboard').then(module => ({ default: module.AuctionDashboardPage })));
 
+const Redirect = ({ to, setCurrentPath }: { to: string, setCurrentPath: (p: string) => void }) => {
+  useEffect(() => {
+    window.history.replaceState(null, '', to);
+    setCurrentPath(to);
+  }, [to, setCurrentPath]);
+  return null;
+};
+
 const MainApp: React.FC = () => {
   const { isAuthenticated, hasPermission } = useAuth();
   const [currentPath, setCurrentPath] = useState<string>(window.location.pathname);
@@ -43,19 +51,13 @@ const MainApp: React.FC = () => {
         return <EdgeDashboardPage />;
       }
       if (hasPermission('ATTENDANCE_ADMIN')) {
-        window.history.replaceState(null, '', '/attendance');
-        setCurrentPath('/attendance');
-        return null;
+        return <Redirect to="/attendance" setCurrentPath={setCurrentPath} />;
       }
       if (hasPermission('ATTENDANCE_VERIFIER')) {
-        window.history.replaceState(null, '', '/attendance/scanner');
-        setCurrentPath('/attendance/scanner');
-        return null;
+        return <Redirect to="/attendance/scanner" setCurrentPath={setCurrentPath} />;
       }
       if (hasPermission('AUCTION_ADMIN')) {
-        window.history.replaceState(null, '', '/auction');
-        setCurrentPath('/auction');
-        return null;
+        return <Redirect to="/auction" setCurrentPath={setCurrentPath} />;
       }
       return <EdgeDashboardPage />;
     }

@@ -7,9 +7,9 @@ interface LoginPageProps {
   expectedRole?: string;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ title = 'ORGANIZER LOGIN' }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ title = 'ORGANIZER LOGIN', expectedRole }) => {
   const { login } = useAuth();
-  const [username, setUsername] = useState<string>('');
+  const [username, setUsername] = useState<string>(expectedRole || '');
   const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
