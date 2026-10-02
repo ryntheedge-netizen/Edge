@@ -13,7 +13,7 @@ export const EdgeLayout: React.FC<EdgeLayoutProps> = ({ children, title }) => {
   const [isCollapsed, setIsCollapsed] = useState(() => window.innerWidth <= 768);
   const [activeDesk, setActiveDesk] = useState<string | null>(sessionStorage.getItem('bull_ring_active_desk'));
 
-  const isBullRingMode = title.includes('Bull Ring');
+  const isBullRingMode = title.includes('Bull Ring') && !window.location.pathname.includes('/attendance');
 
   const handleLogout = async () => {
     if (activeDesk && token) {
