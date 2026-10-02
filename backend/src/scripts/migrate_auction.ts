@@ -12,8 +12,6 @@ const pool = new Pool({
 async function migrate() {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
     // Create Auction State
     await client.query(`
       CREATE TABLE IF NOT EXISTS auction_state (
@@ -71,10 +69,8 @@ async function migrate() {
         // Wait, auction_envelopes_applied doesn't have bid_amount. We should just use auction_bids for both Live and Envelope bids.
     } catch (e) {}
 
-    await client.query('COMMIT');
     console.log('Migration successful');
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('Migration failed:', err);
   } finally {
     client.release();

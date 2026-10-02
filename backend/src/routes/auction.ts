@@ -210,7 +210,7 @@ router.get('/traders', async (req, res) => {
 // 2. Get specific trader portfolio and holdings detail
 router.get('/traders/:id', async (req, res) => {
   try {
-    const traderId = normalizeTraderId(req.params.id);
+    const traderId = await resolveTraderId(req.params.id);
     
     const traderRes = await pool.query(`SELECT starting_corpus FROM auction_traders WHERE trader_id = $1`, [traderId]);
     if (traderRes.rows.length === 0) {
@@ -222,9 +222,8 @@ router.get('/traders/:id', async (req, res) => {
     const holdingsResult = await pool.query(`
       SELECT 
         h.id,
-        h.auction_round,
         h.acquisition_price,
-        h.envelope_id,
+        h.envelope_code,
         s.id as security_id,
         s.code as symbol,
         s.name,
@@ -249,14 +248,13 @@ router.get('/traders/:id', async (req, res) => {
       
       holdings.push({
         id: h.id,
-        round: h.auction_round,
         securityCode: h.symbol,
         securityName: h.name,
         acquisitionPrice: acqPrice,
         currentReturnPct: Number(h.return_pct),
         currentValue: currentValue,
         gainLoss: currentValue - acqPrice,
-        envelopeId: h.envelope_id
+        envelopeCode: h.envelope_code
       });
     }
 
