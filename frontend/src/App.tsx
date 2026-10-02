@@ -52,6 +52,11 @@ const MainApp: React.FC = () => {
         setCurrentPath('/attendance/scanner');
         return null;
       }
+      if (hasPermission('AUCTION_ADMIN')) {
+        window.history.replaceState(null, '', '/auction');
+        setCurrentPath('/auction');
+        return null;
+      }
       return <EdgeDashboardPage />;
     }
     return <LoginPage title="EDGE PLATFORM LOGIN" />;
