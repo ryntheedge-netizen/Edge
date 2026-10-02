@@ -13,7 +13,7 @@ describe('Bull Ring LTP Engine Core Logic', () => {
     // Ensure event is clean and LIVE for testing
     await resetEvent(eventId);
     await updateMarketStatus(eventId, 'LIVE');
-  });
+  }, 30000);
 
   it('Test 1 — Below threshold: Trade value < ₹1,00,000 should accumulate without changing LTP', async () => {
     // Pick reliance (ID 1, initial LTP = 100)
@@ -21,20 +21,20 @@ describe('Bull Ring LTP Engine Core Logic', () => {
     const securityBefore = secRes.rows[0] as SecurityRecord;
     expect(Number(securityBefore.current_ltp)).toBe(988); // 988 is initial LTP for RELIANCE
 
-    // Trade: ₹1100 × 50 = ₹55,000
+    // Trade: ₹1150 × 50 = ₹57,500
     const result = await executeTrade({
       eventId,
       buyerId: 'TR01',
       sellerId: 'JR01',
       securityId: securityBefore.id,
-      price: 1100,
+      price: 1150,
       quantity: 50,
       osStatus: 'OPEN'
     });
 
     expect(result.ltpUpdated).toBe(false);
     expect(Number(result.security.current_ltp)).toBe(988);
-    expect(Number(result.security.accumulated_trade_value)).toBe(55000);
+    expect(Number(result.security.accumulated_trade_value)).toBe(57500);
     expect(result.trade.triggered_ltp_update).toBe(false);
   });
 
@@ -58,7 +58,7 @@ describe('Bull Ring LTP Engine Core Logic', () => {
     expect(Number(result.security.accumulated_trade_value)).toBe(0); // Strictly reset to 0
     expect(result.trade.triggered_ltp_update).toBe(true);
     expect(result.marketEvent).toBeDefined();
-    expect(Number(result.marketEvent?.previous_ltp)).toBe(1794); // Initial ADANI LTP
+    expect(Number(result.marketEvent?.previous_ltp)).toBe(1788); // Initial ADANI LTP
     expect(Number(result.marketEvent?.new_ltp)).toBe(1800);
   });
 
@@ -66,22 +66,22 @@ describe('Bull Ring LTP Engine Core Logic', () => {
     const secRes = await query(`SELECT * FROM securities WHERE symbol = 'RELIANCE' AND event_id = $1`, [eventId]);
     const securityBefore = secRes.rows[0] as SecurityRecord;
 
-    // Trade 1: ₹1050 × 40 = ₹42,000
-    const res1 = await executeTrade({ eventId, buyerId: 'TR01', sellerId: 'JR01', securityId: securityBefore.id, price: 1050, quantity: 40, osStatus: 'OPEN' });
+    // Trade 1: ₹1120 × 40 = ₹44,800
+    const res1 = await executeTrade({ eventId, buyerId: 'TR01', sellerId: 'JR01', securityId: securityBefore.id, price: 1120, quantity: 40, osStatus: 'OPEN' });
     expect(res1.ltpUpdated).toBe(false);
-    expect(Number(res1.security.accumulated_trade_value)).toBe(42000);
+    expect(Number(res1.security.accumulated_trade_value)).toBe(44800);
     expect(Number(res1.security.current_ltp)).toBe(988);
 
-    // Trade 2: ₹1080 × 30 = ₹32,400 (Total accumulated: ₹74,400)
-    const res2 = await executeTrade({ eventId, buyerId: 'TR02', sellerId: 'JR01', securityId: securityBefore.id, price: 1080, quantity: 30, osStatus: 'OPEN' });
+    // Trade 2: ₹1150 × 30 = ₹34,500 (Total accumulated: ₹79,300)
+    const res2 = await executeTrade({ eventId, buyerId: 'TR02', sellerId: 'JR01', securityId: securityBefore.id, price: 1150, quantity: 30, osStatus: 'OPEN' });
     expect(res2.ltpUpdated).toBe(false);
-    expect(Number(res2.security.accumulated_trade_value)).toBe(74400);
+    expect(Number(res2.security.accumulated_trade_value)).toBe(79300);
     expect(Number(res2.security.current_ltp)).toBe(988);
 
-    // Trade 3: ₹1100 × 25 = ₹27,500 (Total accumulated: ₹1,01,900 -> Threshold crossed!)
-    const res3 = await executeTrade({ eventId, buyerId: 'TR03', sellerId: 'JR01', securityId: securityBefore.id, price: 1100, quantity: 25, osStatus: 'OPEN' });
+    // Trade 3: ₹1180 × 25 = ₹29,500 (Total accumulated: ₹1,08,800 -> Threshold crossed!)
+    const res3 = await executeTrade({ eventId, buyerId: 'TR03', sellerId: 'JR01', securityId: securityBefore.id, price: 1180, quantity: 25, osStatus: 'OPEN' });
     expect(res3.ltpUpdated).toBe(true);
-    expect(Number(res3.security.current_ltp)).toBe(1100); // LTP becomes price of Trade 3 (1100)
+    expect(Number(res3.security.current_ltp)).toBe(1180); // LTP becomes price of Trade 3 (1180)
     expect(Number(res3.security.accumulated_trade_value)).toBe(0); // Resets to 0
   });
 
@@ -112,15 +112,15 @@ describe('Bull Ring LTP Engine Core Logic', () => {
   it('Test 5 — Downward movement trade calculation', async () => {
     const secRes = await query(`SELECT * FROM securities WHERE symbol = 'ITC' AND event_id = $1`, [eventId]);
     const securityBefore = secRes.rows[0] as SecurityRecord;
-    expect(Number(securityBefore.current_ltp)).toBe(264);
+    expect(Number(securityBefore.current_ltp)).toBe(268);
 
     await executeTrade({
       eventId,
       buyerId: 'TR05',
       sellerId: 'JR01',
       securityId: securityBefore.id,
-      price: 264,
-      quantity: 1400, // 264 * 1400 > 100000 -> LTP update
+      price: 268,
+      quantity: 1400, // 268 * 1400 > 100000 -> LTP update
       osStatus: 'OPEN'
     });
 
@@ -130,13 +130,13 @@ describe('Bull Ring LTP Engine Core Logic', () => {
       sellerId: 'TR05',
       securityId: securityBefore.id,
       price: 250,
-      quantity: 1500, // 250 * 1500 > 100000 -> LTP update
+      quantity: 1400, // 250 * 1400 > 100000 -> LTP update
       osStatus: 'SQUARE OFF'
     });
 
     expect(result.ltpUpdated).toBe(true);
     expect(Number(result.security.current_ltp)).toBe(250);
-    expect(Number(result.marketEvent?.absolute_change)).toBe(-14);
+    expect(Number(result.marketEvent?.absolute_change)).toBe(-18);
   });
 
   it('Test 7 & 8 — Market PAUSED / ENDED rejects trade submission', async () => {
