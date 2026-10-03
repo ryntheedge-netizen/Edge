@@ -292,6 +292,7 @@ CREATE TABLE IF NOT EXISTS edge_id_templates (
 CREATE TABLE IF NOT EXISTS auction_state (
     id INTEGER PRIMARY KEY DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'NOT_STARTED' CHECK(status IN ('NOT_STARTED', 'RUNNING', 'PAUSED', 'ENDED')),
+    total_sales_counter INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -314,6 +315,8 @@ CREATE TABLE IF NOT EXISTS auction_traders (
     id SERIAL PRIMARY KEY,
     trader_id TEXT NOT NULL UNIQUE,
     starting_corpus NUMERIC(15,2) NOT NULL DEFAULT 2000000.00,
+    is_frozen BOOLEAN NOT NULL DEFAULT false,
+    freeze_start_sales INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -334,6 +337,8 @@ CREATE TABLE IF NOT EXISTS auction_holdings (
     security_id INTEGER NOT NULL REFERENCES auction_securities(id),
     acquisition_price NUMERIC(15,2) NOT NULL,
     envelope_code TEXT REFERENCES auction_master_envelopes(envelope_code) ON DELETE SET NULL,
+    effective_return_pct NUMERIC(15,4),
+    envelope_effect_details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -351,6 +356,8 @@ CREATE TABLE IF NOT EXISTS auction_envelopes_applied (
     id SERIAL PRIMARY KEY,
     trader_id TEXT NOT NULL REFERENCES auction_traders(trader_id),
     envelope_code TEXT REFERENCES auction_master_envelopes(envelope_code) ON DELETE SET NULL,
+    bid_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    resulting_value NUMERIC(15,2) NOT NULL DEFAULT 0,
     details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

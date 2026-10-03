@@ -102,6 +102,7 @@ router.post('/state', async (req, res) => {
         await client.query('DELETE FROM auction_holdings');
         await client.query('DELETE FROM auction_bids');
         await client.query('DELETE FROM auction_traders'); // Clear trader portfolio data generated for auction session
+        await client.query('UPDATE auction_state SET total_sales_counter = 0 WHERE id = 1');
         nextStatus = 'NOT_STARTED';
       }
 
@@ -162,6 +163,7 @@ router.get('/traders', async (req, res) => {
         SELECT 
           h.id as holding_id,
           h.acquisition_price,
+          h.effective_return_pct,
           s.id as security_id,
           s.code as symbol,
           s.name,
@@ -178,15 +180,25 @@ router.get('/traders', async (req, res) => {
         const acqPrice = Number(h.acquisition_price);
         totalPurchaseCost += acqPrice;
         
-        // Calculate current value based on return
-        const returnPct = Number(h.return_pct) / 100;
+        // Calculate current value based on return (use effective return if set)
+        const returnPct = h.effective_return_pct !== null ? Number(h.effective_return_pct) / 100 : Number(h.return_pct) / 100;
         
         const currentValue = acqPrice + (acqPrice * returnPct);
         currentHoldingsValue += currentValue;
       }
 
-      const remainingCorpus = startingCorpus - totalPurchaseCost;
-      const totalPortfolioValue = remainingCorpus + currentHoldingsValue;
+      // Get envelope values
+      const envsResult = await pool.query(`
+        SELECT COALESCE(SUM(resulting_value), 0) as env_value, COALESCE(SUM(bid_amount), 0) as total_spent
+        FROM auction_envelopes_applied
+        WHERE trader_id = $1
+      `, [traderId]);
+      
+      const totalEnvelopeSpent = Number(envsResult.rows[0].total_spent);
+      const totalEnvelopeValue = Number(envsResult.rows[0].env_value);
+
+      const remainingCorpus = startingCorpus - totalPurchaseCost - totalEnvelopeSpent;
+      const totalPortfolioValue = remainingCorpus + currentHoldingsValue + totalEnvelopeValue;
       const difference = totalPortfolioValue - startingCorpus;
 
       portfolios.push({
@@ -212,18 +224,21 @@ router.get('/traders/:id', async (req, res) => {
   try {
     const traderId = await resolveTraderId(req.params.id);
     
-    const traderRes = await pool.query(`SELECT starting_corpus FROM auction_traders WHERE trader_id = $1`, [traderId]);
+    const traderRes = await pool.query(`SELECT starting_corpus, is_frozen, freeze_start_sales FROM auction_traders WHERE trader_id = $1`, [traderId]);
     if (traderRes.rows.length === 0) {
       return res.status(404).json({ error: 'Trader not found' });
     }
     
     const startingCorpus = Number(traderRes.rows[0].starting_corpus);
+    const isFrozen = traderRes.rows[0].is_frozen;
     
     const holdingsResult = await pool.query(`
       SELECT 
         h.id,
         h.acquisition_price,
         h.envelope_code,
+        h.effective_return_pct,
+        h.envelope_effect_details,
         s.id as security_id,
         s.code as symbol,
         s.name,
@@ -242,7 +257,7 @@ router.get('/traders/:id', async (req, res) => {
       const acqPrice = Number(h.acquisition_price);
       totalPurchaseCost += acqPrice;
       
-      const returnPct = Number(h.return_pct) / 100;
+      const returnPct = h.effective_return_pct !== null ? Number(h.effective_return_pct) / 100 : Number(h.return_pct) / 100;
       const currentValue = acqPrice + (acqPrice * returnPct);
       currentHoldingsValue += currentValue;
       
@@ -251,25 +266,59 @@ router.get('/traders/:id', async (req, res) => {
         securityCode: h.symbol,
         securityName: h.name,
         acquisitionPrice: acqPrice,
-        currentReturnPct: Number(h.return_pct),
+        currentReturnPct: returnPct * 100,
+        originalReturnPct: Number(h.return_pct),
         currentValue: currentValue,
         gainLoss: currentValue - acqPrice,
-        envelopeCode: h.envelope_code
+        envelopeCode: h.envelope_code,
+        effectDetails: h.envelope_effect_details
       });
     }
 
-    const remainingCorpus = startingCorpus - totalPurchaseCost;
-    const totalPortfolioValue = remainingCorpus + currentHoldingsValue;
+    // Get envelope transactions
+    const envsResult = await pool.query(`
+      SELECT 
+        e.id, e.envelope_code, m.envelope_name, 
+        e.bid_amount, e.resulting_value, e.details, e.created_at
+      FROM auction_envelopes_applied e
+      LEFT JOIN auction_master_envelopes m ON e.envelope_code = m.envelope_code
+      WHERE e.trader_id = $1
+      ORDER BY e.created_at DESC
+    `, [traderId]);
+
+    let totalEnvelopeSpent = 0;
+    let totalEnvelopeValue = 0;
+    const envelopeTransactions = [];
+
+    for (const e of envsResult.rows) {
+      totalEnvelopeSpent += Number(e.bid_amount);
+      totalEnvelopeValue += Number(e.resulting_value);
+      envelopeTransactions.push({
+        id: e.id,
+        envelopeCode: e.envelope_code,
+        envelopeName: e.envelope_name,
+        bidAmount: Number(e.bid_amount),
+        resultingValue: Number(e.resulting_value),
+        details: e.details,
+        timestamp: e.created_at
+      });
+    }
+
+    const remainingCorpus = startingCorpus - totalPurchaseCost - totalEnvelopeSpent;
+    const totalPortfolioValue = remainingCorpus + currentHoldingsValue + totalEnvelopeValue;
     
     res.json({
       traderId,
       startingCorpus,
       remainingCorpus,
       currentHoldingsValue,
+      totalEnvelopeValue,
       totalPortfolioValue,
       difference: totalPortfolioValue - startingCorpus,
       isLowCorpus: remainingCorpus <= 500000,
-      holdings
+      isFrozen,
+      holdings,
+      envelopeTransactions
     });
   } catch (error) {
     console.error(error);
@@ -323,18 +372,33 @@ router.post('/bid', async (req, res) => {
 
     await withTransaction(async (client) => {
       // Check Auction State
-      const stateRes = await client.query('SELECT status FROM auction_state WHERE id = 1');
+      const stateRes = await client.query('SELECT status, total_sales_counter FROM auction_state WHERE id = 1');
       const auctionStatus = stateRes.rows.length > 0 ? stateRes.rows[0].status : 'NOT_STARTED';
+      const totalSalesCounter = stateRes.rows.length > 0 ? Number(stateRes.rows[0].total_sales_counter) : 0;
+      
       if (auctionStatus !== 'RUNNING') {
         throw { status: 400, message: 'Auction is not running. Bids cannot be placed.' };
       }
-      // Check trader exists
-      const traderRes = await client.query(`SELECT starting_corpus FROM auction_traders WHERE trader_id = $1`, [traderId]);
+      
+      // Check trader exists and freeze state
+      const traderRes = await client.query(`SELECT starting_corpus, is_frozen, freeze_start_sales FROM auction_traders WHERE trader_id = $1`, [traderId]);
       if (traderRes.rows.length === 0) {
         throw { status: 400, message: 'Invalid trader ID.' };
       }
       
       const startingCorpus = Number(traderRes.rows[0].starting_corpus);
+      let isFrozen = traderRes.rows[0].is_frozen;
+      const freezeStartSales = Number(traderRes.rows[0].freeze_start_sales);
+
+      // Evaluate unfreeze
+      if (isFrozen && totalSalesCounter >= freezeStartSales + 20) {
+        await client.query(`UPDATE auction_traders SET is_frozen = false WHERE trader_id = $1`, [traderId]);
+        isFrozen = false;
+      }
+
+      if (isFrozen) {
+        throw { status: 400, message: 'Trader is currently frozen and cannot bid.' };
+      }
 
       // Check security exists if it's a live bid
       let securityId = null;
@@ -351,37 +415,163 @@ router.post('/bid', async (req, res) => {
         SELECT COALESCE(SUM(acquisition_price), 0) as total_spent 
         FROM auction_holdings WHERE trader_id = $1
       `, [traderId]);
+      const totalSpentSecurities = Number(holdingsRes.rows[0].total_spent);
       
-      const totalSpent = Number(holdingsRes.rows[0].total_spent);
-      const remainingCorpus = startingCorpus - totalSpent;
+      const envelopesRes = await client.query(`
+        SELECT COALESCE(SUM(bid_amount), 0) as total_spent 
+        FROM auction_envelopes_applied WHERE trader_id = $1
+      `, [traderId]);
+      const totalSpentEnvelopes = Number(envelopesRes.rows[0].total_spent);
+      
+      const remainingCorpus = startingCorpus - (totalSpentSecurities + totalSpentEnvelopes);
 
       if (remainingCorpus < bidAmount) {
-        // Record rejected bid
-        await client.query(`
-          INSERT INTO auction_bids (trader_id, security_id, bid_amount, envelope_code, status, rejection_reason)
-          VALUES ($1, $2, $3, $4, 'REJECTED', 'Insufficient remaining corpus')
-        `, [traderId, securityId, bidAmount, envelopeCode]);
-        
+        if (securityId) {
+          await client.query(`
+            INSERT INTO auction_bids (trader_id, security_id, bid_amount, status, rejection_reason)
+            VALUES ($1, $2, $3, 'REJECTED', 'Insufficient remaining corpus')
+          `, [traderId, securityId, bidAmount]);
+        }
         throw { status: 400, message: 'Insufficient remaining corpus.' };
       }
 
-      // Record successful bid
-      await client.query(`
-        INSERT INTO auction_bids (trader_id, security_id, bid_amount, envelope_code, status)
-        VALUES ($1, $2, $3, $4, 'SUCCESS')
-      `, [traderId, securityId, bidAmount, envelopeCode]);
+      // Process LIVE BID
+      if (securityId) {
+        // Record successful bid
+        await client.query(`
+          INSERT INTO auction_bids (trader_id, security_id, bid_amount, status)
+          VALUES ($1, $2, $3, 'SUCCESS')
+        `, [traderId, securityId, bidAmount]);
 
-      // Create holding
-      await client.query(`
-        INSERT INTO auction_holdings (trader_id, security_id, acquisition_price, envelope_code)
-        VALUES ($1, $2, $3, $4)
-      `, [traderId, securityId, bidAmount, envelopeCode]);
+        // Create holding
+        await client.query(`
+          INSERT INTO auction_holdings (trader_id, security_id, acquisition_price)
+          VALUES ($1, $2, $3)
+        `, [traderId, securityId, bidAmount]);
 
-      // Audit Log
-      await client.query(`
-        INSERT INTO auction_audit_logs (actor, action, trader_id, security_id, bid_amount, envelope_code, details)
-        VALUES ($1, 'BID_SUCCESS', $2, $3, $4, $5, $6)
-      `, [(req as any).user.username, traderId, securityId, bidAmount, envelopeCode, 'Bid successful and holding created']);
+        // Increment total_sales_counter globally for Live Bids (since a security was successfully sold)
+        await client.query(`UPDATE auction_state SET total_sales_counter = total_sales_counter + 1 WHERE id = 1`);
+
+        // Audit Log
+        await client.query(`
+          INSERT INTO auction_audit_logs (actor, action, trader_id, security_id, bid_amount, details)
+          VALUES ($1, 'BID_SUCCESS', $2, $3, $4, $5)
+        `, [(req as any).user.username, traderId, securityId, bidAmount, 'Live Bid successful']);
+      } 
+      // Process ENVELOPE BID
+      else if (envelopeCode) {
+        let resultingValue = 0;
+        let effectDetails = '';
+
+        switch (envelopeCode) {
+          case '2': // DOULE AMOUNT PLUS
+            resultingValue = bidAmount * 2;
+            effectDetails = 'Double Amount Plus: ' + resultingValue;
+            break;
+        
+          case '3': // DOULE AMOUNT SUB
+            resultingValue = -bidAmount;
+            effectDetails = 'Double Amount Sub: ' + resultingValue;
+            break;
+        
+          case '4': // CANT BID NEXT 20 SHARE
+            await client.query(`UPDATE auction_traders SET is_frozen = true, freeze_start_sales = $1 WHERE trader_id = $2`, [totalSalesCounter, traderId]);
+            resultingValue = 0;
+            effectDetails = 'Trader frozen for next 20 sales';
+            break;
+        
+          case '6': // HIGH RETURN WILL BE 0
+            const maxReturnRes = await client.query(`
+              SELECT h.id, COALESCE(h.effective_return_pct, s.return_pct) as return_pct
+              FROM auction_holdings h
+              JOIN auction_securities s ON h.security_id = s.id
+              WHERE h.trader_id = $1
+              ORDER BY COALESCE(h.effective_return_pct, s.return_pct) DESC
+              LIMIT 1
+            `, [traderId]);
+            if (maxReturnRes.rows.length > 0) {
+              const holdingId = maxReturnRes.rows[0].id;
+              const originalPct = maxReturnRes.rows[0].return_pct;
+              await client.query(`
+                UPDATE auction_holdings 
+                SET effective_return_pct = 0, envelope_effect_details = $1 
+                WHERE id = $2
+              `, [`High return ${originalPct}% set to 0% by Env 6`, holdingId]);
+              effectDetails = `Set holding ${holdingId} return to 0% (was ${originalPct}%)`;
+            } else {
+              effectDetails = 'No holdings to apply Envelope 6 effect';
+            }
+            resultingValue = 0;
+            break;
+        
+          case '7': // LOW RETRUN WILL BE DOUBLE IN (POSITIVE)
+            const minReturnRes = await client.query(`
+              SELECT h.id, COALESCE(h.effective_return_pct, s.return_pct) as return_pct
+              FROM auction_holdings h
+              JOIN auction_securities s ON h.security_id = s.id
+              WHERE h.trader_id = $1 AND COALESCE(h.effective_return_pct, s.return_pct) > 0
+              ORDER BY COALESCE(h.effective_return_pct, s.return_pct) ASC
+              LIMIT 1
+            `, [traderId]);
+            if (minReturnRes.rows.length > 0) {
+              const holdingId = minReturnRes.rows[0].id;
+              const originalPct = minReturnRes.rows[0].return_pct;
+              const newPct = Number(originalPct) * 2;
+              await client.query(`
+                UPDATE auction_holdings 
+                SET effective_return_pct = $1, envelope_effect_details = $2 
+                WHERE id = $3
+              `, [newPct, `Low return ${originalPct}% doubled to ${newPct}% by Env 7`, holdingId]);
+              effectDetails = `Doubled lowest holding ${holdingId} return to ${newPct}% (was ${originalPct}%)`;
+            } else {
+              effectDetails = 'No holdings to apply Envelope 7 effect';
+            }
+            resultingValue = 0;
+            break;
+        
+          case '8': // NEGATIVE WILL BE DOUBLE (low negative return sec)
+            const minNegReturnRes = await client.query(`
+              SELECT h.id, COALESCE(h.effective_return_pct, s.return_pct) as return_pct
+              FROM auction_holdings h
+              JOIN auction_securities s ON h.security_id = s.id
+              WHERE h.trader_id = $1 AND COALESCE(h.effective_return_pct, s.return_pct) < 0
+              ORDER BY COALESCE(h.effective_return_pct, s.return_pct) ASC
+              LIMIT 1
+            `, [traderId]);
+            if (minNegReturnRes.rows.length > 0) {
+              const holdingId = minNegReturnRes.rows[0].id;
+              const originalPct = minNegReturnRes.rows[0].return_pct;
+              const newPct = Number(originalPct) * 2;
+              await client.query(`
+                UPDATE auction_holdings 
+                SET effective_return_pct = $1, envelope_effect_details = $2 
+                WHERE id = $3
+              `, [newPct, `Lowest negative return ${originalPct}% doubled to ${newPct}% by Env 8`, holdingId]);
+              effectDetails = `Doubled lowest negative holding ${holdingId} return to ${newPct}% (was ${originalPct}%)`;
+            } else {
+              effectDetails = 'No negative holdings to apply Envelope 8 effect';
+            }
+            resultingValue = 0;
+            break;
+        
+          default:
+            resultingValue = 0;
+            effectDetails = `Envelope ${envelopeCode} purchased (Effect pending/unimplemented)`;
+            break;
+        }
+
+        // Record Envelope Applied
+        await client.query(`
+          INSERT INTO auction_envelopes_applied (trader_id, envelope_code, bid_amount, resulting_value, details)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [traderId, envelopeCode, bidAmount, resultingValue, effectDetails]);
+
+        // Audit Log
+        await client.query(`
+          INSERT INTO auction_audit_logs (actor, action, trader_id, envelope_code, bid_amount, details)
+          VALUES ($1, 'ENVELOPE_BID_SUCCESS', $2, $3, $4, $5)
+        `, [(req as any).user.username, traderId, envelopeCode, bidAmount, effectDetails]);
+      }
     });
 
     res.json({ success: true, message: 'Bid successful.' });

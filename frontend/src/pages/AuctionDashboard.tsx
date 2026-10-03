@@ -14,10 +14,23 @@ interface TraderPortfolio {
   startingCorpus: number;
   remainingCorpus: number;
   currentHoldingsValue: number;
+  totalEnvelopeValue: number;
   totalPortfolioValue: number;
   difference: number;
   isLowCorpus: boolean;
+  isFrozen?: boolean;
   holdings?: Holding[];
+  envelopeTransactions?: EnvelopeTransaction[];
+}
+
+interface EnvelopeTransaction {
+  id: number;
+  envelopeCode: string;
+  envelopeName: string;
+  bidAmount: number;
+  resultingValue: number;
+  details: string;
+  timestamp: string;
 }
 
 interface Envelope {
@@ -31,9 +44,11 @@ interface Holding {
   securityName: string;
   acquisitionPrice: number;
   currentReturnPct: number;
+  originalReturnPct: number;
   currentValue: number;
   gainLoss: number;
   envelopeCode: string;
+  effectDetails: string;
 }
 
 interface AuditLog {
@@ -935,6 +950,11 @@ export const AuctionDashboardPage: React.FC = () => {
                       <tr style={{ backgroundColor: '#111726' }}>
                         <td colSpan={6} style={{ padding: 0, borderBottom: '1px solid var(--border-color)' }}>
                           <div style={{ padding: '0 2rem 2rem 3rem', borderLeft: '2px solid #f59e0b', margin: '1rem 0' }}>
+                            {selectedTraderDetails.isFrozen && (
+                              <div style={{ padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '4px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <AlertCircle size={16} /> TRADER IS CURRENTLY FROZEN
+                              </div>
+                            )}
                             <h4 style={{ margin: '0 0 1rem 0', color: '#f59e0b', fontSize: '0.8rem', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <ChevronDown size={14} /> ACQUIRED HOLDINGS
                             </h4>
@@ -952,10 +972,18 @@ export const AuctionDashboardPage: React.FC = () => {
                               <tbody>
                                 {selectedTraderDetails.holdings && selectedTraderDetails.holdings.map(h => (
                                   <tr key={h.id}>
-                                    <td style={{ fontWeight: 'bold', color: '#3b82f6', letterSpacing: '0.05em' }}>{h.securityName} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({h.securityCode})</span></td>
+                                    <td style={{ fontWeight: 'bold', color: '#3b82f6', letterSpacing: '0.05em' }}>
+                                      {h.securityName} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({h.securityCode})</span>
+                                      {h.effectDetails && <div style={{ fontSize: '0.7rem', color: '#eab308', marginTop: '0.25rem' }}>* {h.effectDetails}</div>}
+                                    </td>
                                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(h.acquisitionPrice)}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: h.currentReturnPct >= 0 ? '#10b981' : '#ef4444' }}>
                                       {h.currentReturnPct > 0 ? '+' : ''}{h.currentReturnPct.toFixed(2)}%
+                                      {h.currentReturnPct !== h.originalReturnPct && (
+                                        <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                                          Orig: {h.originalReturnPct.toFixed(2)}%
+                                        </span>
+                                      )}
                                     </td>
                                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{formatCurrency(h.currentValue)}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: h.gainLoss >= 0 ? '#10b981' : '#ef4444' }}>
@@ -966,7 +994,41 @@ export const AuctionDashboardPage: React.FC = () => {
                                 ))}
                                 {(!selectedTraderDetails.holdings || selectedTraderDetails.holdings.length === 0) && (
                                   <tr>
-                                    <td colSpan={7} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No active holdings</td>
+                                    <td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No active holdings</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                            
+                            {/* Envelope Transactions */}
+                            <h4 style={{ margin: '2rem 0 1rem 0', color: '#eab308', fontSize: '0.8rem', letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <ChevronDown size={14} /> ENVELOPE TRANSACTIONS
+                            </h4>
+                            <table className="custom-table" style={{ background: 'transparent' }}>
+                              <thead>
+                                <tr>
+                                  <th>Envelope</th>
+                                  <th style={{ textAlign: 'right' }}>Bid Amount</th>
+                                  <th style={{ textAlign: 'right' }}>Resulting Value</th>
+                                  <th>Details</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedTraderDetails.envelopeTransactions && selectedTraderDetails.envelopeTransactions.map(e => (
+                                  <tr key={e.id}>
+                                    <td style={{ fontWeight: 'bold', color: '#eab308' }}>
+                                      {e.envelopeName} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({e.envelopeCode})</span>
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{formatCurrency(e.bidAmount)}</td>
+                                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: e.resultingValue > 0 ? '#10b981' : (e.resultingValue < 0 ? '#ef4444' : 'inherit') }}>
+                                      {formatCurrency(e.resultingValue)}
+                                    </td>
+                                    <td style={{ color: 'var(--text-secondary)' }}>{e.details}</td>
+                                  </tr>
+                                ))}
+                                {(!selectedTraderDetails.envelopeTransactions || selectedTraderDetails.envelopeTransactions.length === 0) && (
+                                  <tr>
+                                    <td colSpan={4} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No envelope transactions</td>
                                   </tr>
                                 )}
                               </tbody>
