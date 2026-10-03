@@ -192,8 +192,15 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     const buyerJobber = buyerJobberRes.rows[0];
     const sellerJobber = sellerJobberRes.rows[0];
 
+    const buyerBrokerRes = await client.query(`SELECT * FROM brokers WHERE broker_identifier = $1 AND event_id = $2`, [buyerId, eventId]);
+    const sellerBrokerRes = await client.query(`SELECT * FROM brokers WHERE broker_identifier = $1 AND event_id = $2`, [sellerId, eventId]);
+    const buyerBroker = buyerBrokerRes.rows[0];
+    const sellerBroker = sellerBrokerRes.rows[0];
+
     const isBuyerJobber = !!buyerJobber;
     const isSellerJobber = !!sellerJobber;
+    const isBuyerBroker = !!buyerBroker;
+    const isSellerBroker = !!sellerBroker;
 
     async function getOrCreateTrader(traderIdentifier: string) {
       let traderRes = await client.query(`SELECT * FROM traders WHERE trader_identifier = $1 AND event_id = $2 FOR UPDATE`, [traderIdentifier, eventId]);
@@ -209,11 +216,11 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
       return trader;
     }
 
-    const buyerTrader = !isBuyerJobber ? await getOrCreateTrader(buyerId) : null;
-    const sellerTrader = !isSellerJobber ? await getOrCreateTrader(sellerId) : null;
+    const buyerTrader = (!isBuyerJobber && !isBuyerBroker) ? await getOrCreateTrader(buyerId) : null;
+    const sellerTrader = (!isSellerJobber && !isSellerBroker) ? await getOrCreateTrader(sellerId) : null;
 
     // 4. Wallet & Inventory Validations
-    if (!isBuyerJobber && buyerTrader.current_cash_balance < totalValue) {
+    if (!isBuyerJobber && !isBuyerBroker && buyerTrader.current_cash_balance < totalValue) {
       insertScrap(`Trade rejected: Buyer ${buyerId} has insufficient cash.`);
     }
 
@@ -224,6 +231,12 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
       if (sellerQty < input.quantity) {
         insertScrap(`Trade rejected: Jobber ${sellerId} has insufficient inventory for ${security.symbol}.`);
       }
+    } else if (isSellerBroker) {
+      const invRes = await client.query(`SELECT remaining_quantity FROM broker_inventory WHERE broker_id = $1 AND security_id = $2 FOR UPDATE`, [sellerBroker.id, security.id]);
+      sellerQty = invRes.rows.length > 0 ? Number(invRes.rows[0].remaining_quantity) : 0;
+      if (sellerQty < input.quantity) {
+        insertScrap(`Trade rejected: Seller ${sellerId} has insufficient shares.`);
+      }
     } else {
       const sellerHoldingRes = await client.query(`SELECT quantity FROM trader_holdings WHERE trader_id = $1 AND security_id = $2 FOR UPDATE`, [sellerTrader.id, security.id]);
       sellerQty = sellerHoldingRes.rows.length > 0 ? Number(sellerHoldingRes.rows[0].quantity) : 0;
@@ -233,7 +246,7 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
     }
 
     let actualOsStatus = reqOsStatus;
-    if (!isSellerJobber) {
+    if (!isSellerJobber && !isSellerBroker) {
       let remaining = sellerQty - input.quantity;
       if (remaining === 0) actualOsStatus = 'SQUARE OFF';
       else actualOsStatus = 'OPEN';
@@ -289,6 +302,13 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
       } else {
         await client.query(`INSERT INTO jobber_inventory (jobber_id, security_id, remaining_quantity) VALUES ($1, $2, $3)`, [buyerJobber.id, security.id, input.quantity]);
       }
+    } else if (isBuyerBroker) {
+      const invRes = await client.query(`SELECT id FROM broker_inventory WHERE broker_id = $1 AND security_id = $2 FOR UPDATE`, [buyerBroker.id, security.id]);
+      if (invRes.rows.length > 0) {
+        await client.query(`UPDATE broker_inventory SET remaining_quantity = remaining_quantity + $1 WHERE id = $2`, [input.quantity, invRes.rows[0].id]);
+      } else {
+        await client.query(`INSERT INTO broker_inventory (broker_id, security_id, remaining_quantity) VALUES ($1, $2, $3)`, [buyerBroker.id, security.id, input.quantity]);
+      }
     } else {
       await client.query(`UPDATE traders SET current_cash_balance = current_cash_balance - $1 WHERE id = $2`, [totalValue, buyerTrader.id]);
       let buyerHoldingRes = await client.query(`SELECT id FROM trader_holdings WHERE trader_id = $1 AND security_id = $2 FOR UPDATE`, [buyerTrader.id, security.id]);
@@ -307,6 +327,8 @@ export async function executeTrade(input: TradeInput): Promise<TradeExecutionRes
 
     if (isSellerJobber) {
       await client.query(`UPDATE jobber_inventory SET remaining_quantity = remaining_quantity - $1 WHERE jobber_id = $2 AND security_id = $3`, [input.quantity, sellerJobber.id, security.id]);
+    } else if (isSellerBroker) {
+      await client.query(`UPDATE broker_inventory SET remaining_quantity = remaining_quantity - $1 WHERE broker_id = $2 AND security_id = $3`, [input.quantity, sellerBroker.id, security.id]);
     } else {
       await client.query(`UPDATE traders SET current_cash_balance = current_cash_balance + $1 WHERE id = $2`, [totalValue, sellerTrader.id]);
       await client.query(`UPDATE trader_holdings SET quantity = quantity - $1 WHERE trader_id = $2 AND security_id = $3`, [input.quantity, sellerTrader.id, security.id]);
