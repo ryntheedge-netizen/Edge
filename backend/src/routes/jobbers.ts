@@ -63,7 +63,7 @@ router.post('/count', authenticateSuperadmin, async (req: Request, res: Response
 
       if (count > currentCount) {
         for (let i = currentCount + 1; i <= count; i++) {
-          await client.query(`INSERT INTO jobbers (event_id, jobber_identifier) VALUES ($1, $2)`, [event.id, `JOBBER ${i.toString().padStart(2, '0')}`]);
+          await client.query(`INSERT INTO jobbers (event_id, jobber_identifier) VALUES ($1, $2)`, [event.id, `JR${i.toString().padStart(2, '0')}`]);
         }
       } else if (count < currentCount) {
         const toDeleteRes = await client.query(`SELECT id FROM jobbers WHERE event_id = $1 ORDER BY id DESC LIMIT $2`, [event.id, currentCount - count]);
